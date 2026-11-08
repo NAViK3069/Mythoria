@@ -1,29 +1,23 @@
 import * as Phaser from 'phaser';
+import * as ripplesFx from 'pixelfx/fx/water/ripples';
+import type { FxModule } from 'pixelfx';
 import { makeCanvas, rng } from '../art/pixel';
-import { COLS, ROWS, T, TILE, vertexAt, type MeadowMap } from './meadowMap';
+import { FxSprite } from '../fx/FxSprite';
+import { COLS, ROWS, T, TILE, vertexAt, waterAt, type MeadowMap } from './meadowMap';
 
-/** Frames in one loop of the water animation, and how fast it plays. */
-const FRAMES = 12;
-const FPS = 6;
+/** How often the water surface is redrawn - with continuous time, 30 fps like pixelfx. */
+const WATER_FPS = 30;
 
 const SHALLOW = [0x6c, 0xc4, 0xd8];
-const MID = [0x2f, 0x86, 0xbc];
-const DEEP = [0x1b, 0x4c, 0x8a];
-const CREST = [0xd8, 0xf4, 0xff];
+const MID = [0x3a, 0x96, 0xca];
+const DEEP = [0x25, 0x62, 0xa0];
+const CREST = [0xe0, 0xf7, 0xff];
+const FOAM = [0xee, 0xfa, 0xff];
 
-interface Pond {
-  image: Phaser.GameObjects.Image;
-}
+const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+const pack = (r: number, g: number, b: number) => (255 << 24) | (Math.round(b) << 16) | (Math.round(g) << 8) | Math.round(r);
 
-interface LilyPad {
-  image: Phaser.GameObjects.Image;
-  shade: Phaser.GameObjects.Ellipse;
-  x: number;
-  y: number;
-  seed: number;
-}
-
-/** Smooth value noise, used for the looping surface pattern. */
+/** Smooth value noise. */
 function noise(seed: number) {
   const h = (x: number, y: number) => {
     let n = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0;
@@ -38,33 +32,259 @@ function noise(seed: number) {
   };
 }
 
+/** One body of water, redrawn live: everything that never changes is worked out once. */
+class PondSurface {
+  readonly image: Phaser.GameObjects.Image;
+  private readonly texture: Phaser.Textures.CanvasTexture;
+  private readonly ctx: CanvasRenderingContext2D;
+  private readonly img: ImageData;
+  private readonly out: Uint32Array;
+  private readonly water: Uint8Array;
+  private readonly cells: Int32Array; // indices of water pixels
+  private readonly color: Uint32Array; // depth-tinted water + reflection, packed
+  private readonly cr: Float32Array; // the same colour unpacked, for crest blending
+  private readonly cg: Float32Array;
+  private readonly cb: Float32Array;
+  private readonly phaseA: Float32Array; // crest pattern
+  private readonly phaseB: Float32Array; // where crests break up
+  private readonly deep: Uint8Array; // far enough from the bank for crests
+  private readonly edge: Int32Array; // pixels touching the bank (foam)
+
+  constructor(scene: Phaser.Scene, key: string, readonly box: { x: number; y: number; w: number; h: number }, src: Uint8ClampedArray, refl: Uint8ClampedArray) {
+    const { w, h } = box;
+    const n = w * h;
+    this.water = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const r = src[i * 4], g = src[i * 4 + 1], b = src[i * 4 + 2];
+      this.water[i] = b > r + 25 && b >= g - 6 ? 1 : 0;
+    }
+    // distance to the bank
+    const dist = new Float32Array(n).fill(1e9);
+    const q: number[] = [];
+    for (let i = 0; i < n; i++) if (!this.water[i]) { dist[i] = 0; q.push(i); }
+    for (let qi = 0; qi < q.length; qi++) {
+      const i = q[qi], x = i % w, y = (i / w) | 0;
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (dist[j] > dist[i] + 1) { dist[j] = dist[i] + 1; q.push(j); }
+      }
+    }
+    const nz = noise(3);
+    const cells: number[] = [];
+    const edge: number[] = [];
+    this.color = new Uint32Array(n);
+    this.cr = new Float32Array(n);
+    this.cg = new Float32Array(n);
+    this.cb = new Float32Array(n);
+    this.phaseA = new Float32Array(n);
+    this.phaseB = new Float32Array(n);
+    this.deep = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      if (!this.water[i]) continue;
+      cells.push(i);
+      const x = i % w, y = (i / w) | 0, d = dist[i];
+      const k = Math.min(1, d / 18);
+      const tint = k < 0.35 ? SHALLOW.map((c, j) => mix(c, MID[j], k / 0.35)) : MID.map((c, j) => mix(c, DEEP[j], (k - 0.35) / 0.65));
+      // The surface is painted here, not taken from the tiles (their texture repeats every 16 px):
+      // depth colour with broad, soft light and dark patches, as if from the sky and the pond bed.
+      const patch = (nz(x * 0.035 + 7, y * 0.05 + 3) - 0.5) * 0.16 + (nz(x * 0.11, y * 0.16 + 9) - 0.5) * 0.05;
+      let r = tint[0] * (1 + patch);
+      let g = tint[1] * (1 + patch);
+      let b = tint[2] * (1 + patch * 0.7);
+      if (d <= 3 && d > 1.5) { r = mix(r, SHALLOW[0], 0.3); g = mix(g, SHALLOW[1], 0.3); b = mix(b, SHALLOW[2], 0.3); }
+      const ra = (refl[i * 4 + 3] / 255) * 0.42;
+      if (ra > 0) {
+        r = mix(r, refl[i * 4] * 0.55, ra);
+        g = mix(g, refl[i * 4 + 1] * 0.62, ra);
+        b = mix(b, refl[i * 4 + 2] * 0.7 + 40, ra);
+      }
+      this.cr[i] = r; this.cg[i] = g; this.cb[i] = b;
+      this.color[i] = pack(r, g, b);
+      this.phaseA[i] = y * 0.8 + nz(x * 0.07, y * 0.11) * 9;
+      this.phaseB[i] = nz(x * 0.2 + 40, y * 0.6) * 12;
+      this.deep[i] = d > 3 ? 1 : 0;
+      if (d <= 1.5) edge.push(i);
+    }
+    this.cells = Int32Array.from(cells);
+    this.edge = Int32Array.from(edge);
+
+    this.texture = scene.textures.createCanvas(key, w, h)!;
+    const canvas = this.texture.getSourceImage() as HTMLCanvasElement;
+    this.ctx = canvas.getContext('2d')!;
+    this.img = this.ctx.createImageData(w, h);
+    this.out = new Uint32Array(this.img.data.buffer);
+    this.image = scene.add.image(box.x, box.y, key).setOrigin(0, 0).setDepth(0.5);
+    this.draw(0);
+  }
+
+  /** Is this pond pixel water? (for keeping lilies afloat) */
+  isWater(px: number, py: number): boolean {
+    const x = Math.round(px - this.box.x), y = Math.round(py - this.box.y);
+    if (x < 0 || y < 0 || x >= this.box.w || y >= this.box.h) return false;
+    return this.water[y * this.box.w + x] === 1;
+  }
+
+  draw(t: number): void {
+    const { w, h } = this.box;
+    const out = this.out, color = this.color, water = this.water;
+    // each row sways sideways a little, at its own moment: the surface and the reflection ripple
+    const sway = new Int8Array(h);
+    for (let y = 0; y < h; y++) sway[y] = Math.round(Math.sin(y * 0.5 + t * 1.7) * 0.85 + Math.sin(y * 0.16 - t * 1.1) * 0.65);
+    const tA = t * 1.15, tB = t * 0.55;
+    for (let c = 0; c < this.cells.length; c++) {
+      const i = this.cells[c];
+      const y = (i / w) | 0;
+      let j = i + sway[y];
+      if (!water[j]) j = i;
+      // light crests: thin glinting lines that slide smoothly across the water and break up
+      if (this.deep[i]) {
+        const s = Math.sin(this.phaseA[i] + tA);
+        if (s > 0.975 && Math.sin(this.phaseB[i] + tB) > 0.7) {
+          const a = 0.25 + 0.55 * ((s - 0.975) / 0.025);
+          out[i] = pack(mix(this.cr[j], CREST[0], a), mix(this.cg[j], CREST[1], a), mix(this.cb[j], CREST[2], a));
+          continue;
+        }
+      }
+      out[i] = color[j];
+    }
+    // foam lapping at the bank
+    for (let c = 0; c < this.edge.length; c++) {
+      const i = this.edge[c];
+      const x = i % w, y = (i / w) | 0;
+      const a = 0.15 + (Math.sin(x * 0.45 + y * 0.3 - t * 2.3) * 0.5 + 0.5) * 0.4;
+      out[i] = pack(mix(this.cr[i], FOAM[0], a), mix(this.cg[i], FOAM[1], a), mix(this.cb[i], FOAM[2], a));
+    }
+    this.ctx.putImageData(this.img, 0, 0);
+    this.texture.refresh();
+  }
+}
+
+/** A ring spreading over the water, drawn crisp pixel by pixel every frame so it grows smoothly. */
+class Ripple {
+  readonly image: Phaser.GameObjects.Image;
+  private readonly texture: Phaser.Textures.CanvasTexture;
+  private readonly ctx: CanvasRenderingContext2D;
+  private readonly img: ImageData;
+  private readonly out: Uint32Array;
+  age = 0;
+  private readonly W = 64;
+  private readonly H = 24;
+
+  constructor(scene: Phaser.Scene, key: string, private readonly size: number) {
+    this.texture = scene.textures.createCanvas(key, this.W, this.H)!;
+    this.ctx = (this.texture.getSourceImage() as HTMLCanvasElement).getContext('2d')!;
+    this.img = this.ctx.createImageData(this.W, this.H);
+    this.out = new Uint32Array(this.img.data.buffer);
+    this.image = scene.add.image(0, 0, key).setDepth(1.45).setVisible(false);
+  }
+
+  get alive(): boolean {
+    return this.image.visible;
+  }
+
+  start(x: number, y: number): void {
+    this.age = 0;
+    this.image.setPosition(Math.round(x), Math.round(y)).setVisible(true);
+  }
+
+  update(dt: number): void {
+    if (!this.image.visible) return;
+    this.age += dt;
+    const LIFE = 1.6;
+    if (this.age >= LIFE) {
+      this.image.setVisible(false);
+      return;
+    }
+    const k = this.age / LIFE;
+    const out = this.out;
+    out.fill(0);
+    const cx = this.W / 2, cy = this.H / 2;
+    // two rings, the second trailing; each eases out and fades
+    for (const [delay, strength] of [[0, 1], [0.22, 0.6]]) {
+      const kk = (k - delay) / (1 - delay);
+      if (kk <= 0) continue;
+      const R = 2 + (this.size - 2) * (1 - Math.pow(1 - kk, 3));
+      const power = Math.pow(1 - kk, 1.4) * strength;
+      for (let y = 0; y < this.H; y++) {
+        for (let x = 0; x < this.W; x++) {
+          const e = Math.hypot(x + 0.5 - cx, (y + 0.5 - cy) / 0.38);
+          const d = Math.abs(e - R);
+          if (d > 1.1) continue;
+          const a = Math.round(255 * power * (1 - d / 1.1) * 0.9);
+          const p = y * this.W + x;
+          const prev = out[p] >>> 24;
+          if (a > prev) out[p] = (a << 24) | (0xff << 16) | (0xf6 << 8) | 0xe2; // pale blue-white
+        }
+      }
+    }
+    this.ctx.putImageData(this.img, 0, 0);
+    this.texture.refresh();
+  }
+}
+
+interface LilyPad {
+  image: Phaser.GameObjects.Image;
+  shade: Phaser.GameObjects.Ellipse;
+  ax: number; // where it likes to be
+  ay: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  r: number;
+  spin: number;
+  angle: number;
+  seed: number;
+}
+
 /**
- * Living ponds. Each pond is pre-rendered into a short seamless loop (played as
- * a sprite over the baked ground): water coloured by depth - pale near the shore,
- * deep blue in the middle - the trees and stones on the bank reflected upside
- * down and wobbling, light crests drifting over the surface and foam lapping at
- * the bank. Lily pads float on top, drifting, turning and bobbing, now and then
- * sending out a ripple.
+ * Living ponds, redrawn live at 30 fps so everything moves smoothly: water
+ * coloured by depth - pale near the shore, deep blue in the middle - the bank
+ * reflected and swaying, light crests sliding across the surface and foam
+ * lapping at the bank; a pixelfx ripple spring in the big pond; lily pads that
+ * drift on a gentle current, nudge each other apart, turn when they bump and
+ * send out rings.
  */
 export class Ponds {
-  private readonly ponds: Pond[] = [];
+  private readonly surfaces: PondSurface[] = [];
   private readonly lilies: LilyPad[] = [];
+  private readonly ripples: Ripple[] = [];
+  private readonly springs: FxSprite[] = [];
   private time = 0;
-  private frame = 0;
+  private acc = 0;
   private rippleT = 1;
   private readonly r = rng(17);
 
   constructor(private readonly scene: Phaser.Scene, private readonly map: MeadowMap, ground: HTMLCanvasElement) {
     const g = ground.getContext('2d', { willReadFrequently: true })!;
-    for (const [i, box] of this.findPonds().entries()) {
-      const key = `pond${i}`;
-      const sheet = this.renderPond(g, box);
-      const tex = scene.textures.addCanvas(key, sheet.canvas)!;
-      for (let f = 0; f < FRAMES; f++) tex.add(`f${f}`, 0, (f % sheet.cols) * box.w, Math.floor(f / sheet.cols) * box.h, box.w, box.h);
-      const image = scene.add.image(box.x, box.y, key, 'f0').setOrigin(0, 0).setDepth(0.5);
-      this.ponds.push({ image });
+    const boxes = this.findPonds();
+    boxes.forEach((box, i) => {
+      const src = g.getImageData(box.x, box.y, box.w, box.h).data;
+      this.surfaces.push(new PondSurface(scene, `pond${i}`, box, src, this.reflections(box)));
+    });
+    for (let i = 0; i < 6; i++) this.ripples.push(new Ripple(scene, `ripple${i}`, 14));
+    // a little spring bubbling up in the biggest pond (pixelfx "Ripples")
+    const big = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a), boxes[0]);
+    if (big) {
+      const spot = this.openWater(big, 30);
+      if (spot) {
+        const fx = new FxSprite(scene, ripplesFx as unknown as FxModule, spot.x, spot.y, { opts: { seed: 5 } });
+        fx.image.setScale(0.5).setAlpha(0.75).setDepth(1.4);
+        this.springs.push(fx);
+      }
     }
-    scene.textures.addCanvas('ripple', rippleTexture());
+  }
+
+  /** A spot at least `margin` px from any bank. */
+  private openWater(box: { x: number; y: number; w: number; h: number }, margin: number) {
+    for (let k = 0; k < 400; k++) {
+      const x = box.x + this.r() * box.w, y = box.y + this.r() * box.h;
+      let ok = true;
+      for (const [dx, dy] of [[margin, 0], [-margin, 0], [0, margin * 0.5], [0, -margin * 0.5], [0, 0]]) if (waterAt(this.map, x + dx, y + dy) < 0.99) ok = false;
+      if (ok) return { x, y };
+    }
+    return null;
   }
 
   /** Bounding boxes (px) of each body of water, from the terrain corners. */
@@ -95,106 +315,20 @@ export class Ponds {
     return boxes;
   }
 
-  private renderPond(g: CanvasRenderingContext2D, box: { x: number; y: number; w: number; h: number }) {
-    const { x: bx, y: by, w, h } = box;
-    const src = g.getImageData(bx, by, w, h).data;
-    const n = w * h;
-
-    // which pixels are water (the tiles' blue), and how far each is from the shore
-    const water = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      const r = src[i * 4], gg = src[i * 4 + 1], b = src[i * 4 + 2];
-      water[i] = b > r + 25 && b >= gg - 6 ? 1 : 0;
-    }
-    const depth = new Float32Array(n).fill(0);
-    {
-      const INF = 1e9;
-      const d = new Float32Array(n).fill(INF);
-      const q: number[] = [];
-      for (let i = 0; i < n; i++) if (!water[i]) { d[i] = 0; q.push(i); }
-      for (let qi = 0; qi < q.length; qi++) {
-        const i = q[qi], x = i % w, y = (i / w) | 0;
-        for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          const j = ny * w + nx;
-          if (d[j] > d[i] + 1) { d[j] = d[i] + 1; q.push(j); }
-        }
-      }
-      for (let i = 0; i < n; i++) depth[i] = Math.min(d[i], 40);
-    }
-
-    // reflections: things on the bank, mirrored about their base line
-    const [, rg] = makeCanvas(w, h);
+  /** Things on the bank, mirrored about their base line, for the water to reflect. */
+  private reflections(box: { x: number; y: number; w: number; h: number }): Uint8ClampedArray {
+    const [, rg] = makeCanvas(box.w, box.h);
     for (const o of this.map.objects) {
       if (!o.frame || o.kind === 'lily' || o.kind === 'decal') continue;
       const f = this.scene.textures.getFrame('meadow', o.frame);
-      if (o.x + f.cutWidth < bx || o.x - f.cutWidth > bx + w || o.y + f.cutHeight < by || o.y - 4 > by + h) continue;
+      if (o.x + f.cutWidth < box.x || o.x - f.cutWidth > box.x + box.w || o.y + f.cutHeight < box.y || o.y - 4 > box.y + box.h) continue;
       rg.save();
-      rg.translate(Math.round(o.x - bx), Math.round(o.y - by));
+      rg.translate(Math.round(o.x - box.x), Math.round(o.y - box.y));
       rg.scale(1, -1);
       rg.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, -Math.round(f.cutWidth / 2), -f.cutHeight, f.cutWidth, f.cutHeight);
       rg.restore();
     }
-    const refl = rg.getImageData(0, 0, w, h).data;
-
-    const cols = Math.min(FRAMES, Math.max(1, Math.floor(4000 / w)));
-    const rows = Math.ceil(FRAMES / cols);
-    const [sheet, sg] = makeCanvas(w * cols, h * rows);
-    const out = sg.createImageData(w, h);
-    const o = out.data;
-    const nz = noise(3);
-    const mix = (a: number, b: number, t: number) => a + (b - a) * t;
-
-    for (let f = 0; f < FRAMES; f++) {
-      const ph = (f / FRAMES) * Math.PI * 2;
-      const cx = Math.cos(ph), sx = Math.sin(ph);
-      for (let y = 0; y < h; y++) {
-        // each row sways a little sideways: the reflection and the surface ripple
-        const sway = Math.round(Math.sin(y * 0.55 + ph) * 0.9 + Math.sin(y * 0.17 - 2 * ph) * 0.7);
-        for (let x = 0; x < w; x++) {
-          const i = y * w + x;
-          const p = i * 4;
-          if (!water[i]) { o[p + 3] = 0; continue; }
-          const dd = depth[i];
-          // base: the tile's own texture tinted by depth
-          let sx2 = x + sway;
-          if (sx2 < 0 || sx2 >= w || !water[y * w + sx2]) sx2 = x;
-          const si = (y * w + sx2) * 4;
-          const k = Math.min(1, dd / 18);
-          const tint = k < 0.35 ? SHALLOW.map((c, j) => mix(c, MID[j], k / 0.35)) : MID.map((c, j) => mix(c, DEEP[j], (k - 0.35) / 0.65));
-          let r = mix(src[si], tint[0], 0.65);
-          let gg = mix(src[si + 1], tint[1], 0.65);
-          let b = mix(src[si + 2], tint[2], 0.65);
-          // reflection of the bank, darkened and blued, rippling with the rows
-          const ri = (y * w + Math.min(w - 1, Math.max(0, x + sway))) * 4;
-          const ra = refl[ri + 3] / 255;
-          if (ra > 0) {
-            const a = ra * 0.42;
-            r = mix(r, refl[ri] * 0.55, a);
-            gg = mix(gg, refl[ri + 1] * 0.62, a);
-            b = mix(b, refl[ri + 2] * 0.7 + 40, a);
-          }
-          // light crests: thin horizontal glints that drift and break up
-          const wave = Math.sin(y * 0.8 + nz(x * 0.07 + cx * 1.5, y * 0.11 + sx * 1.5) * 9 + ph);
-          const brk = nz(x * 0.2 + cx * 2.2, y * 0.6 + sx * 2.2);
-          if (dd > 3 && wave > 0.95 && brk > 0.58) {
-            const a = 0.5 * (wave - 0.95) / 0.05 + 0.2;
-            r = mix(r, CREST[0], a); gg = mix(gg, CREST[1], a); b = mix(b, CREST[2], a);
-          }
-          // foam lapping at the bank
-          if (dd <= 1.5) {
-            const lap = Math.sin(x * 0.45 + y * 0.3 - ph * 2) * 0.5 + 0.5;
-            const a = 0.15 + lap * 0.35;
-            r = mix(r, 235, a); gg = mix(gg, 248, a); b = mix(b, 255, a);
-          } else if (dd <= 3) {
-            r = mix(r, SHALLOW[0], 0.3); gg = mix(gg, SHALLOW[1], 0.3); b = mix(b, SHALLOW[2], 0.3);
-          }
-          o[p] = r; o[p + 1] = gg; o[p + 2] = b; o[p + 3] = 255;
-        }
-      }
-      sg.putImageData(out, (f % cols) * w, Math.floor(f / cols) * h);
-    }
-    return { canvas: sheet, cols };
+    return rg.getImageData(0, 0, box.w, box.h).data;
   }
 
   /** Lily pads (the map's 'lily' sprites) taken over so they float. */
@@ -202,63 +336,102 @@ export class Ponds {
     for (const image of images) {
       const shade = this.scene.add.ellipse(image.x + 1, image.y + 2, image.width * 0.9, image.height * 0.6, 0x0b2a44, 0.28).setDepth(1.4);
       image.setDepth(1.5);
-      this.lilies.push({ image, shade, x: image.x, y: image.y, seed: this.r() * 100 });
+      this.lilies.push({
+        image, shade, ax: image.x, ay: image.y, x: image.x, y: image.y, vx: 0, vy: 0,
+        r: Math.max(image.width, image.height) * 0.46, spin: 0, angle: 0, seed: this.r() * 100,
+      });
     }
+  }
+
+  private afloat(x: number, y: number, r: number): boolean {
+    return waterAt(this.map, x, y) > 0.99 && waterAt(this.map, x + r * 0.8, y) > 0.9 && waterAt(this.map, x - r * 0.8, y) > 0.9 && waterAt(this.map, x, y + r * 0.5) > 0.9 && waterAt(this.map, x, y - r * 0.5) > 0.9;
   }
 
   update(dt: number): void {
     this.time += dt;
     const t = this.time;
-    const f = Math.floor(t * FPS) % FRAMES;
-    if (f !== this.frame) {
-      this.frame = f;
-      for (const p of this.ponds) p.image.setFrame(`f${f}`);
+    const view = this.scene.cameras.main.worldView;
+
+    // the water surface: 30 redraws a second, only for ponds on screen
+    this.acc += dt;
+    if (this.acc >= 1 / WATER_FPS) {
+      this.acc %= 1 / WATER_FPS;
+      for (const s of this.surfaces) {
+        const b = s.box;
+        if (b.x > view.right || b.x + b.w < view.x || b.y > view.bottom || b.y + b.h < view.y) continue;
+        s.draw(t);
+      }
     }
-    // lilies drift in slow loops, turn a little and bob (a gentle squash as a swell passes)
-    for (const l of this.lilies) {
-      const s = l.seed;
-      const x = l.x + Math.sin(t * 0.31 + s) * 2.2 + Math.sin(t * 0.13 + s * 2) * 1.2;
-      const y = l.y + Math.sin(t * 0.23 + s * 1.3) * 1.4;
-      const bob = Math.sin(t * 1.7 + s * 3);
-      l.image.setPosition(x, y + bob * 0.25);
-      l.image.setRotation(Math.sin(t * 0.37 + s) * 0.18);
-      l.image.setScale(1 + bob * 0.025, 1 - bob * 0.04);
-      l.shade.setPosition(x + 1, y + 2);
-    }
-    // now and then a pad rocks and sends a ring across the water
+    for (const f of this.springs) f.update(dt);
+    for (const r of this.ripples) r.update(dt);
+
+    this.updateLilies(dt, t);
+
+    // now and then a pad rocks and sends a ring out
     this.rippleT -= dt;
     if (this.rippleT <= 0 && this.lilies.length) {
-      this.rippleT = 0.6 + this.r() * 1.4;
+      this.rippleT = 0.7 + this.r() * 1.6;
       const l = this.lilies[Math.floor(this.r() * this.lilies.length)];
-      const view = this.scene.cameras.main.worldView;
-      if (view.contains(l.image.x, l.image.y)) this.ripple(l.image.x, l.image.y + 2);
+      if (view.contains(l.x, l.y)) this.ripple(l.x, l.y + 1);
+    }
+  }
+
+  private updateLilies(dt: number, t: number): void {
+    const L = this.lilies;
+    for (const l of L) {
+      // a slow, wandering current plus a weak pull back to where it belongs
+      const fx = Math.sin(t * 0.21 + l.seed + l.y * 0.03) * 1.1 + (l.ax - l.x) * 0.11;
+      const fy = Math.cos(t * 0.17 + l.seed * 1.7 + l.x * 0.03) * 0.7 + (l.ay - l.y) * 0.11;
+      l.vx += fx * dt;
+      l.vy += fy * dt;
+      const damp = Math.exp(-1.2 * dt);
+      l.vx *= damp;
+      l.vy *= damp;
+      l.spin *= Math.exp(-0.8 * dt);
+    }
+    // pads never overlap: they push each other apart (and turn a little when they bump)
+    for (let i = 0; i < L.length; i++) {
+      for (let j = i + 1; j < L.length; j++) {
+        const a = L[i], b = L[j];
+        const dx = b.x - a.x, dy = (b.y - a.y) * 1.6; // pads are seen flattened: measure in their plane
+        const min = a.r + b.r + 1;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= min * min) continue;
+        const d = Math.sqrt(d2) || 0.01;
+        const push = (min - d) / 2;
+        const nx = dx / d, ny = dy / d / 1.6;
+        a.x -= nx * push; a.y -= ny * push;
+        b.x += nx * push; b.y += ny * push;
+        const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+        if (rel < 0) {
+          a.vx += nx * rel * 0.5; a.vy += ny * rel * 0.5;
+          b.vx -= nx * rel * 0.5; b.vy -= ny * rel * 0.5;
+          a.spin += rel * 0.04; b.spin -= rel * 0.04;
+        }
+      }
+    }
+    for (const l of L) {
+      const nx = l.x + l.vx * dt, ny = l.y + l.vy * dt;
+      if (this.afloat(nx, ny, l.r)) {
+        l.x = nx;
+        l.y = ny;
+      } else {
+        // touched the bank: stop and drift back out
+        l.vx = (l.ax - l.x) * 0.3;
+        l.vy = (l.ay - l.y) * 0.3;
+        if (!this.afloat(l.x, l.y, l.r)) { l.x += (l.ax - l.x) * 0.1; l.y += (l.ay - l.y) * 0.1; }
+      }
+      l.angle += l.spin * dt;
+      const bob = Math.sin(t * 1.6 + l.seed * 3);
+      l.image.setPosition(l.x, l.y + bob * 0.25);
+      l.image.setRotation(l.angle + Math.sin(t * 0.33 + l.seed) * 0.12);
+      l.image.setScale(1 + bob * 0.02, 1 - bob * 0.035);
+      l.shade.setPosition(l.x + 1, l.y + 2);
     }
   }
 
   private ripple(x: number, y: number): void {
-    const ring = this.scene.add.image(x, y, 'ripple').setDepth(1.45).setAlpha(0.7).setScale(0.3);
-    this.scene.tweens.add({
-      targets: ring,
-      scale: 1.4,
-      alpha: 0,
-      duration: 1800,
-      ease: 'Sine.easeOut',
-      onComplete: () => ring.destroy(),
-    });
+    const free = this.ripples.find((r) => !r.alive);
+    free?.start(x, y);
   }
-}
-
-/** A flat pixel ring (an ellipse outline) for ripples. */
-function rippleTexture(): HTMLCanvasElement {
-  const W = 33, H = 15;
-  const [c, g] = makeCanvas(W, H);
-  g.fillStyle = '#dff6ff';
-  const cx = (W - 1) / 2, cy = (H - 1) / 2, rx = cx, ry = cy;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
-      if (d <= 1 && d > 1 - 1.3 / ry) g.fillRect(x, y, 1, 1);
-    }
-  }
-  return c;
 }

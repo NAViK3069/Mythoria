@@ -361,7 +361,11 @@ export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
       if (at(x, y) !== T.Water || lilyN(x / 4, y / 4) < 0.58 || r() > 0.35) continue;
       let open = true;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (at(x + dx, y + dy) !== T.Water) open = false;
-      if (open) objects.push({ frame: `lily${Math.floor(r() * 5)}`, x: x * TILE + (r() - 0.5) * 8, y: y * TILE + (r() - 0.5) * 8, kind: 'lily' });
+      if (!open) continue;
+      const lx = x * TILE + (r() - 0.5) * 8, ly = y * TILE + (r() - 0.5) * 8;
+      // room round each pad, so they can drift without crowding
+      if (objects.some((o) => o.kind === 'lily' && Math.hypot(o.x - lx, (o.y - ly) * 1.6) < 24)) continue;
+      objects.push({ frame: `lily${Math.floor(r() * 5)}`, x: lx, y: ly, kind: 'lily' });
     }
   }
 
