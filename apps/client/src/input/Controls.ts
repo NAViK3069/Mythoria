@@ -1,4 +1,5 @@
 import * as Phaser from 'phaser';
+import { uiBlocking } from '../ui/Modal';
 
 const STICK_RADIUS = 40; // px on screen for full speed
 const DRAG_START = 10; // px moved before a press becomes a joystick drag
@@ -25,7 +26,8 @@ export class Controls {
   onTarget?: (x: number, y: number) => void;
 
   constructor(scene: Phaser.Scene) {
-    this.keys = scene.input.keyboard!.addKeys('W,A,S,D,UP,LEFT,DOWN,RIGHT') as Record<string, Phaser.Input.Keyboard.Key>;
+    // no key capture: the HUD's text boxes (chat, names) must still receive these letters
+    this.keys = scene.input.keyboard!.addKeys('W,A,S,D,UP,LEFT,DOWN,RIGHT', false) as Record<string, Phaser.Input.Keyboard.Key>;
     const input = scene.input;
     // The canvas renders at device pixels; the joystick (HTML) lives in CSS pixels.
     const css = (v: number) => v / scene.scale.displayScale.x;
@@ -70,6 +72,12 @@ export class Controls {
   }
 
   update(): void {
+    if (uiBlocking()) {
+      // a panel is open or the player is typing: stand still
+      this.dir.x = this.dir.y = 0;
+      this.target = null;
+      return;
+    }
     const k = this.keys;
     let x = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
     let y = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0);

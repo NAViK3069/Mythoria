@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { Controls } from '../input/Controls';
+import { createHud, type Hud } from '../ui/Hud';
 import { Ambience } from '../world/Ambience';
 import { MasterCharacter } from '../world/MasterCharacter';
 import { MeadowView } from '../world/MeadowView';
@@ -19,6 +20,7 @@ export class WorldScene extends Phaser.Scene {
   private master!: MasterCharacter;
   private controls!: Controls;
   private marker!: Phaser.GameObjects.Image;
+  private hud!: Hud;
 
   constructor() {
     super('World');
@@ -32,7 +34,11 @@ export class WorldScene extends Phaser.Scene {
 
     this.master = new MasterCharacter(this, this.map.spawn.x, this.map.spawn.y);
     this.master.walkSpeed = SPEED;
-    this.master.onStep = (x, y) => this.dust(x, y);
+    this.hud = createHud(() => this.game.loop.actualFps);
+    this.master.onStep = (x, y) => {
+      this.dust(x, y);
+      this.hud.step();
+    };
 
     this.ambience = new Ambience(this, this.map);
 
@@ -136,6 +142,8 @@ export class WorldScene extends Phaser.Scene {
 
     this.view.moving = Math.hypot(m.vx, m.vy) > 5;
     this.view.update(dt, m.x, m.y, time / 1000);
+    const shrine = this.map.braziers[0];
+    if (shrine && Math.hypot(m.x - shrine.x - 24, m.y - shrine.y) < 70) this.hud.reached('shrine');
     this.ambience.update(dt);
   }
 
