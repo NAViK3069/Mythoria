@@ -2,6 +2,7 @@ import { fmt, h, icon, toast } from '../dom';
 import { registerPanel } from '../Modal';
 import { changed, player } from '../store';
 import { ITEMS } from './common';
+import { showRewards } from '../reward';
 
 interface Offer {
   id: string;
@@ -12,12 +13,14 @@ interface Offer {
   price: { thb?: number; gems?: number; gold?: number };
   give(): void;
   tag?: string;
+  /** how many the popup shows (default 1) */
+  qty?: number;
 }
 
 const OFFERS: Record<string, Offer[]> = {
   featured: [
-    { id: 'energy', name: 'เติมพลังงาน', icon: 'energy', desc: 'พลังงาน +60', price: { gems: 50 }, give: () => { player.energy = Math.min(player.energyMax * 2, player.energy + 60); }, tag: 'ขายดี' },
-    { id: 'potion5', name: 'ยาฟื้นฟู x5', icon: 'potion', desc: 'ใช้ระหว่างการผจญภัย', price: { gold: 2000 }, give: () => addItem('potion', 5) },
+    { id: 'energy', name: 'เติมพลังงาน', icon: 'energy', desc: 'พลังงาน +60', price: { gems: 50 }, give: () => { player.energy = Math.min(player.energyMax * 2, player.energy + 60); }, tag: 'ขายดี', qty: 60 },
+    { id: 'potion5', name: 'ยาฟื้นฟู x5', icon: 'potion', desc: 'ใช้ระหว่างการผจญภัย', price: { gold: 2000 }, give: () => addItem('potion', 5), qty: 5 },
     { id: 'chest', name: 'หีบสมบัติ', icon: 'chest', desc: 'เปิดรับทองแบบสุ่ม', price: { gems: 80 }, give: () => addItem('chest', 1) },
     { id: 'key', name: 'กุญแจทอง', icon: 'key', desc: 'ไขหีบและประตูพิเศษ', price: { gold: 5000 }, give: () => addItem('key', 1) },
   ],
@@ -28,8 +31,8 @@ const OFFERS: Record<string, Offer[]> = {
     { id: 'g2240', name: 'เพชร 2,240', icon: 'gem', desc: 'หีบเพชรใหญ่', price: { thb: 1090 }, give: () => {}, tag: 'คุ้มสุด' },
   ],
   gold: [
-    { id: 'gold10k', name: 'ทอง 10,000', icon: 'gold', desc: 'แลกด้วยเพชร', price: { gems: 100 }, give: () => { player.gold += 10000; } },
-    { id: 'gold60k', name: 'ทอง 60,000', icon: 'gold', desc: 'แลกด้วยเพชร', price: { gems: 500 }, give: () => { player.gold += 60000; }, tag: '+20%' },
+    { id: 'gold10k', name: 'ทอง 10,000', icon: 'gold', desc: 'แลกด้วยเพชร', price: { gems: 100 }, give: () => { player.gold += 10000; }, qty: 10000 },
+    { id: 'gold60k', name: 'ทอง 60,000', icon: 'gold', desc: 'แลกด้วยเพชร', price: { gems: 500 }, give: () => { player.gold += 60000; }, tag: '+20%', qty: 60000 },
   ],
   packs: [
     { id: 'starter', name: 'แพ็กนักผจญภัยหน้าใหม่', icon: 'chest', desc: 'เพชร 300 • ทอง 50,000 • หีบสมบัติ x3', price: { thb: 99 }, give: () => {}, tag: 'ซื้อได้ครั้งเดียว' },
@@ -66,7 +69,7 @@ registerPanel('shop', {
       if (p.gold) player.gold -= p.gold;
       o.give();
       changed();
-      toast(`ซื้อ ${o.name} แล้ว`);
+      showRewards([{ icon: o.icon, amount: o.qty ?? 1, label: o.name }], 'ซื้อสำเร็จ!');
       ctx.refresh();
     };
     body.append(
@@ -122,7 +125,7 @@ registerPanel('bag', {
                   if (id === 'chest') {
                     const g = 500 + Math.floor(Math.random() * 10) * 250;
                     player.gold += g;
-                    toast(`เปิดหีบได้ทอง ${fmt(g)}`);
+                    showRewards([{ icon: 'gold', amount: g, label: 'ทอง' }], 'เปิดหีบสมบัติ!');
                   } else {
                     toast(`${it.name}: ใช้ได้เมื่อระบบต่อสู้เปิด`);
                     return;

@@ -32,6 +32,34 @@ export function icon(name: string, size = 32, cls = ''): HTMLImageElement {
   return h('img', { class: `px-icon ${cls}`, src: `assets/ui/icons/${name}.png`, width: size, height: size, alt: '', draggable: false });
 }
 
+/**
+ * A tiny pixel glyph drawn from rows ('#' = filled), as crisp SVG - so marks like
+ * the close cross and the plus sit dead centre and stay sharp at any size,
+ * unlike font characters.
+ */
+export function glyph(rows: string[], cls = ''): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  const w = rows[0].length;
+  const hgt = rows.length;
+  svg.setAttribute('viewBox', `0 0 ${w} ${hgt}`);
+  svg.setAttribute('class', `glyph ${cls}`);
+  svg.setAttribute('shape-rendering', 'crispEdges');
+  svg.setAttribute('aria-hidden', 'true');
+  let d = '';
+  rows.forEach((r, y) => {
+    for (let x = 0; x < r.length; x++) if (r[x] === '#') d += `M${x} ${y}h1v1h-1z`;
+  });
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'currentColor');
+  svg.appendChild(path);
+  return svg;
+}
+
+export const GLYPH_X = ['##....##', '###..###', '.######.', '..####..', '..####..', '.######.', '###..###', '##....##'];
+export const GLYPH_PLUS = ['..##..', '..##..', '######', '######', '..##..', '..##..'];
+
 /** 12500 -> "12,500"; 1250000 -> "1.25M" */
 export function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 1 : 2).replace(/\.?0+$/, '')}M`;

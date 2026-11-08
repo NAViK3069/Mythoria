@@ -2,6 +2,7 @@ import { fmt, h, icon, toast } from '../dom';
 import { registerPanel } from '../Modal';
 import { changed, giveReward, player, progressQuests } from '../store';
 import { avatar, rewardChips } from './common';
+import { rewardItems, showRewards } from '../reward';
 
 registerPanel('profile', {
   title: 'โปรไฟล์',
@@ -192,7 +193,7 @@ registerPanel('mail', {
               h('button', {
                 class: 'btn gold px-cut',
                 disabled: m.claimed,
-                onclick: () => { m.claimed = true; toast(`ได้รับ ${giveReward(m.gift!)}`); draw(); },
+                onclick: () => { m.claimed = true; giveReward(m.gift!); showRewards(rewardItems(m.gift!)); draw(); },
               }, m.claimed ? 'รับแล้ว' : 'รับของ'))
           : '',
       );

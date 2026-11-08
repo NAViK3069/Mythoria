@@ -1,4 +1,5 @@
-import { h, icon } from './dom';
+import { GLYPH_X, glyph, h, icon } from './dom';
+import { rewardOpen } from './reward';
 
 /** A gold pixel frame round some content. */
 export function frame(cls: string, ...content: (Node | string | null | false | undefined)[]): HTMLDivElement {
@@ -30,7 +31,7 @@ export function registerPanel(id: string, def: PanelDef): void {
 
 /** Is a panel open? The game ignores movement input while one is. */
 export function uiBlocking(): boolean {
-  if (current) return true;
+  if (current || rewardOpen()) return true;
   const a = document.activeElement;
   return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
 }
@@ -63,7 +64,11 @@ export function openPanel(id: string, tab?: string): void {
     : null;
   const panel = frame(
     `panel ${def.narrow ? 'narrow' : ''}`,
-    h('div', { class: 'panel-head' }, icon(def.icon, 32), h('h2', null, def.title), h('button', { class: 'x-btn px-cut', onclick: closePanel, 'aria-label': 'ปิด' }, '✕')),
+    h('div', { class: 'panel-head' },
+      h('div', { class: 'emblem px-cut' }, h('span', { class: 'px-cut' }, icon(def.icon, 32))),
+      h('h2', null, def.title),
+      h('div', { class: 'flourish' }, h('i'), h('b'), h('i')),
+      h('button', { class: 'x-btn px-cut', onclick: closePanel, 'aria-label': 'ปิด', title: 'ปิด (Esc)' }, h('span', { class: 'px-cut' }, glyph(GLYPH_X)))),
     ...(tabBar ? [tabBar] : []),
     body,
   );

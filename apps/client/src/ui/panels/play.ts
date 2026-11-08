@@ -1,7 +1,8 @@
 import { fmt, h, icon, toast } from '../dom';
 import { registerPanel } from '../Modal';
 import { changed, giveReward, player, type Quest } from '../store';
-import { rewardChips } from './common';
+import { art, rewardChips } from './common';
+import { rewardItems, showRewards } from '../reward';
 
 const LOGIN_GIFTS = [
   { gold: 2000 }, { gems: 50 }, { gold: 5000 }, { gems: 80 }, { gold: 10000 }, { gems: 120 }, { gems: 300 },
@@ -21,8 +22,8 @@ registerPanel('events', {
   build(body, tab, ctx) {
     if (tab === 'launch') {
       body.append(
-        h('div', { class: 'banner px-cut', style: 'min-height:200px;background:radial-gradient(circle at 75% 40%,rgba(240,207,116,.45),transparent 45%),linear-gradient(135deg,#0e3b3f,#14524f 55%,#0a2a30)' },
-          h('div', { class: 'orb' }, icon('trophy', 150)),
+        h('div', { class: 'banner px-cut', style: `min-height:240px;${art('explore')}` },
+          h('div', { class: 'orb' }, icon('trophy', 140)),
           h('div', { class: 'copy' },
             h('h3', { style: 'background:linear-gradient(180deg,#fff,#ffe7a3);-webkit-background-clip:text;background-clip:text' }, 'เทศกาลเปิดตัว Mythoria'),
             h('p', null, 'อีเวนต์ฉลองเปิดเซิร์ฟเวอร์ พร้อมของรางวัลพิเศษ'),
@@ -44,7 +45,8 @@ registerPanel('events', {
               if (!now) return;
               player.loginDays++;
               player.loginLast = today();
-              toast(`ได้รับ ${giveReward(g)}`);
+              giveReward(g);
+              showRewards(rewardItems(g), `ของขวัญวันที่ ${i + 1}`);
               ctx.refresh();
             },
           },
@@ -83,7 +85,8 @@ registerPanel('quests', {
           disabled: !done || q.claimed,
           onclick: () => {
             q.claimed = true;
-            toast(`ได้รับ ${giveReward(q.reward)}`);
+            giveReward(q.reward);
+            showRewards(rewardItems(q.reward), 'เควสสำเร็จ!');
             changed();
             ctx.refresh();
           },
@@ -94,11 +97,11 @@ registerPanel('quests', {
 });
 
 const MODES = [
-  { id: 'explore', name: 'สำรวจโลก', desc: 'เดินสำรวจทุ่งหญ้า ค้นหาสมบัติ', icon: 'map', bg: 'linear-gradient(160deg,#1f6b5c,#0d3534)', open: true },
-  { id: 'story', name: 'เนื้อเรื่อง', desc: 'ออกเดินทางตามตำนานแห่ง Mythoria', icon: 'book', bg: 'linear-gradient(160deg,#5b3f8f,#1d1240)' },
-  { id: 'arena', name: 'อารีน่า (PvP)', desc: 'ประลองทีมกับผู้เล่นคนอื่น', icon: 'battle', bg: 'linear-gradient(160deg,#8f3a3a,#3a0f16)' },
-  { id: 'raid', name: 'บอสเรด', desc: 'ร่วมมือกันโค่นบอสยักษ์', icon: 'trophy', bg: 'linear-gradient(160deg,#8f6a2a,#3a2508)' },
-  { id: 'dungeon', name: 'ดันเจี้ยน', desc: 'ลุยด่านเก็บวัตถุดิบอัปเกรด', icon: 'key', bg: 'linear-gradient(160deg,#2a5a8f,#0c1f3a)' },
+  { id: 'explore', name: 'สำรวจโลก', desc: 'เดินสำรวจทุ่งหญ้า ค้นหาสมบัติ', open: true },
+  { id: 'story', name: 'เนื้อเรื่อง', desc: 'ออกเดินทางตามตำนานแห่ง Mythoria' },
+  { id: 'arena', name: 'อารีน่า (PvP)', desc: 'ประลองทีมกับผู้เล่นคนอื่น' },
+  { id: 'raid', name: 'บอสเรด', desc: 'ร่วมมือกันโค่นบอสยักษ์' },
+  { id: 'dungeon', name: 'ดันเจี้ยน', desc: 'ลุยด่านเก็บวัตถุดิบอัปเกรด' },
 ];
 
 registerPanel('modes', {
@@ -109,15 +112,15 @@ registerPanel('modes', {
       h('div', { class: 'modes' },
         MODES.map((m) =>
           h('div', {
-            class: `mode px-cut ${m.open ? '' : 'locked'}`,
-            style: `background:${m.bg}`,
+            class: `mode px-cut ${m.open ? 'featured' : 'locked'}`,
+            style: art(m.id),
             onclick: () => (m.open ? ctx.close() : toast(`${m.name} — เร็วๆ นี้`)),
           },
-            m.open ? h('span', { class: 'tag', style: 'background:var(--ui-accent-2)' }, 'กำลังเล่น') : h('span', { class: 'tag' }, '🔒 เร็วๆ นี้'),
-            icon(m.icon, 64),
+            m.open ? h('span', { class: 'tag live' }, '● กำลังเล่น') : h('span', { class: 'tag' }, '🔒 เร็วๆ นี้'),
             h('div', { class: 'nm' }, m.name),
             h('div', { class: 'ds' }, m.desc),
-            h('div', { class: 'ds', style: 'display:flex;align-items:center;gap:4px;color:var(--ui-gold)' }, icon('energy', 18), m.open ? 'ฟรี' : 'ใช้พลังงาน')),
+            h('div', { class: 'cost' }, icon('energy', 18), m.open ? 'ฟรี' : 'ใช้พลังงาน'),
+            m.open ? h('button', { class: 'btn gold px-cut go' }, 'ออกสำรวจ') : null),
         )),
     );
   },

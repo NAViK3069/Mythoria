@@ -5,12 +5,15 @@ import { createHud, type Hud } from '../ui/Hud';
 import { Ambience } from '../world/Ambience';
 import { MasterCharacter } from '../world/MasterCharacter';
 import { MeadowView } from '../world/MeadowView';
+import { renderMinimap } from '../world/minimap';
 import { buildMeadow, COLS, ROWS, TILE, waterAt, type Footprint, type MeadowMap, type Shape, type ShapeOf } from '../world/meadowMap';
 
 const SPEED = 92; // px/s
 /** The player's own footprint: an ellipse under the body, as wide as the body (13 px). */
 const FOOT_RX = 6;
 const FOOT_RY = 3;
+/** How far above the feet the name plate floats (world px; the character is 32 px tall). */
+const NAME_HEIGHT = 33;
 
 /** The world map: walk the master character round the meadow. */
 export class WorldScene extends Phaser.Scene {
@@ -55,6 +58,22 @@ export class WorldScene extends Phaser.Scene {
     cam.startFollow(this.master.root, false, 0.12, 0.12);
     this.fitZoom();
     this.scale.on('resize', () => this.fitZoom());
+
+    const shrine = this.map.braziers[0];
+    this.hud.attachMap({
+      image: renderMinimap(this, this.map),
+      width: COLS * TILE,
+      height: ROWS * TILE,
+      quest: shrine ? { id: 's-shrine', x: shrine.x + 24, y: shrine.y } : undefined,
+    });
+    this.time.delayedCall(500, () => this.hud.announceArea('ทุ่งหญ้า', 'พื้นที่สำรวจ'));
+
+    // Pin the name plate over the master's head once the camera has moved for this frame.
+    cam.on('followupdate', () => {
+      const v = cam.worldView;
+      const k = cam.zoom / this.scale.displayScale.x; // world px -> CSS px
+      this.hud.placeName((this.master.x - v.x) * k, (this.master.y - NAME_HEIGHT - v.y) * k);
+    });
   }
 
   /** Reads the atlas pixels once so footprints can follow each picture's solid base. */
@@ -146,6 +165,7 @@ export class WorldScene extends Phaser.Scene {
     const shrine = this.map.braziers[0];
     if (shrine && Math.hypot(m.x - shrine.x - 24, m.y - shrine.y) < 70) this.hud.reached('shrine');
     this.ambience.update(dt);
+    this.hud.track(m.x, m.y, m.facing, this.cameras.main.worldView);
   }
 
   /** Move, then let footprints push the feet out - so the player slides round trunks and along walls. */

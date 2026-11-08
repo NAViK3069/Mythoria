@@ -1,6 +1,7 @@
 import { fmt, h, icon, toast } from '../dom';
 import { registerPanel } from '../Modal';
 import { player } from '../store';
+import { art } from './common';
 
 // Heroes don't exist yet (the owner will design them): these panels show the
 // layout and empty states, ready for real hero data.
@@ -63,9 +64,9 @@ registerPanel('summon', {
       toast('ยังไม่มีรายชื่อฮีโร่ในระบบ — ซัมม่อนจะเปิดพร้อมฮีโร่ชุดแรก');
     };
     body.append(
-      h('div', { class: 'banner px-cut' },
+      h('div', { class: 'banner px-cut', style: art('summon') },
         stars,
-        h('div', { class: 'orb' }, icon('summon', 150)),
+        h('div', { class: 'orb' }, icon('summon', 140)),
         h('div', { class: 'copy' },
           h('span', { class: 'note', style: 'color:#c9b5ff' }, 'แบนเนอร์ถาวร'),
           h('h3', null, 'การอัญเชิญแห่งตำนาน'),
