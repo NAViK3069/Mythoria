@@ -17,6 +17,8 @@ export interface StandingThing {
 /** Sun from the upper left: shadows fall down and to the right. */
 const SHADOW_SKEW = 0.55;
 const SHADOW_SQUASH = 0.42;
+/** World px per texel of the light maps. */
+const LIGHT_RES = 4;
 
 /**
  * Draws the meadow: the ground (autotiled terrain + ground decals) and the cast
@@ -33,7 +35,53 @@ export class MeadowView {
     scene.add.image(0, 0, 'ground').setOrigin(0, 0).setDepth(0);
     scene.textures.addCanvas('shadows', this.bakeShadows());
     scene.add.image(0, 0, 'shadows').setOrigin(0, 0).setDepth(1).setAlpha(0.3);
+    // Light that belongs to the level: shade under the woods, warm sun pooling in the clearings.
+    const [shade, sun] = this.bakeLight();
+    scene.textures.addCanvas('shade', shade)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    scene.add.image(0, 0, 'shade').setOrigin(0, 0).setScale(LIGHT_RES).setDepth(1.2).setBlendMode(Phaser.BlendModes.MULTIPLY);
+    scene.textures.addCanvas('sunlight', sun)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    this.sun = scene.add.image(0, 0, 'sunlight').setOrigin(0, 0).setScale(LIGHT_RES).setDepth(1.3).setBlendMode(Phaser.BlendModes.ADD);
     this.placeObjects();
+  }
+
+  private readonly sun: Phaser.GameObjects.Image;
+
+  /** Low-resolution light maps (one texel = LIGHT_RES px), smoothed when drawn. */
+  private bakeLight(): [HTMLCanvasElement, HTMLCanvasElement] {
+    const W = Math.ceil((COLS * TILE) / LIGHT_RES);
+    const H = Math.ceil((ROWS * TILE) / LIGHT_RES);
+    const [shade, sg] = makeCanvas(W, H);
+    const [sun, ug] = makeCanvas(W, H);
+    sg.imageSmoothingEnabled = ug.imageSmoothingEnabled = true;
+    sg.fillStyle = '#ffffff';
+    sg.fillRect(0, 0, W, H);
+    sg.globalCompositeOperation = 'multiply';
+    const blob = (g: CanvasRenderingContext2D, x: number, y: number, rad: number, rgb: string, a: number) => {
+      const X = x / LIGHT_RES, Y = y / LIGHT_RES, R = rad / LIGHT_RES;
+      const gr = g.createRadialGradient(X, Y, 0, X, Y, R);
+      gr.addColorStop(0, `rgba(${rgb},${a})`);
+      gr.addColorStop(0.55, `rgba(${rgb},${a * 0.55})`);
+      gr.addColorStop(1, `rgba(${rgb},0)`);
+      g.fillStyle = gr;
+      g.fillRect(X - R, Y - R, R * 2, R * 2);
+    };
+    const trees = this.map.objects.filter((o) => o.kind === 'tree');
+    // canopy shade, offset away from the sun; it builds up where the woods are thick
+    for (const t of trees) blob(sg, t.x + 10, t.y - 6, 46, '86,110,122', 0.55);
+    for (const o of this.map.objects) if (o.kind === 'wall' || o.kind === 'pillar') blob(sg, o.x + 6, o.y, 24, '110,125,135', 0.3);
+
+    // warm sun pooling wherever the sky is open; dapples at the edge of the woods
+    const r = rng(5);
+    const nearestTree = (x: number, y: number) => trees.reduce((d, t) => Math.min(d, Math.hypot(t.x - x, t.y - 20 - y)), Infinity);
+    for (let y = 0; y < ROWS * TILE; y += 44) {
+      for (let x = 0; x < COLS * TILE; x += 44) {
+        const px = x + (r() - 0.5) * 30, py = y + (r() - 0.5) * 30;
+        const d = nearestTree(px, py);
+        if (d > 95) blob(ug, px, py, 80, '255,226,150', 0.05);
+        else if (d > 34 && r() < 0.5) blob(ug, px, py, 10 + r() * 8, '255,240,180', 0.16);
+      }
+    }
+    return [shade, sun];
   }
 
   private sourceOf(key: string): CanvasImageSource {
@@ -123,6 +171,8 @@ export class MeadowView {
       const target = behind ? 0.45 : 1;
       t.image.alpha += (target - t.image.alpha) * Math.min(1, dt * 8);
     }
+    // the sunlight breathes very slowly, as if thin cloud were passing
+    this.sun.setAlpha(0.85 + Math.sin(time * 0.35) * 0.15);
     // lily pads bob gently
     for (let i = 0; i < this.lilies.length; i++) {
       const l = this.lilies[i];

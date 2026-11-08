@@ -2,7 +2,6 @@ import * as Phaser from 'phaser';
 import * as brazier from 'pixelfx/fx/fire/brazier';
 import * as butterfly from 'pixelfx/fx/critters/butterfly';
 import * as wisp from 'pixelfx/fx/critters/wisp';
-import * as godRays from 'pixelfx/fx/weather/god-rays';
 import type { FxModule } from 'pixelfx';
 import { makeCanvas, rng } from '../art/pixel';
 import { FxSprite } from '../fx/FxSprite';
@@ -19,7 +18,6 @@ const LIGHT_R = 48;
 export class Ambience {
   private readonly fx: FxSprite[] = [];
   private readonly clouds: Phaser.GameObjects.TileSprite;
-  private readonly rays: FxSprite;
   private readonly lights: { light: Phaser.GameObjects.PointLight; base: number; seed: number }[] = [];
   private readonly waterSpots: { x: number; y: number }[] = [];
   private sparkleT = 0;
@@ -55,10 +53,6 @@ export class Ambience {
       this.fx.push(f);
     }
 
-    // Sun rays over the whole view (light only, added on top).
-    this.rays = new FxSprite(scene, fxMod(godRays), 0, 0, { additive: true, always: true, crop: [0, 0, 320, 150], fps: 20 });
-    this.rays.image.setOrigin(0, 0).setDepth(9800).setAlpha(0.35);
-
     // Pollen and dust drifting in the light.
     scene.textures.addCanvas('mote', dot(3, '#fff6c8'));
     scene.add
@@ -81,12 +75,10 @@ export class Ambience {
       for (let x = 1; x < COLS; x++)
         if (vertexAt(map, x, y) === T.Water && vertexAt(map, x + 1, y) === T.Water && vertexAt(map, x, y + 1) === T.Water) this.waterSpots.push({ x: x * TILE, y: y * TILE });
 
-    // Camera: a touch warmer and richer, darker at the corners.
-    const cam = scene.cameras.main;
-    const grade = cam.filters.internal.addColorMatrix();
-    grade.colorMatrix.saturate(0.12);
-    grade.colorMatrix.contrast(0.06, true);
-    cam.filters.internal.addVignette(0.5, 0.5, 0.95, 0.35);
+    // Overall colour: a touch richer. (No screen-space lighting: all light belongs to the level.)
+    const grade = scene.cameras.main.filters.internal.addColorMatrix();
+    grade.colorMatrix.saturate(-0.06);
+    grade.colorMatrix.contrast(0.08, true);
   }
 
   update(dt: number): void {
@@ -97,10 +89,7 @@ export class Ambience {
     this.clouds.tilePositionX -= dt * 5;
     this.clouds.tilePositionY -= dt * 2;
 
-    // keep the sun rays over the camera's view
     const view = this.scene.cameras.main.worldView;
-    this.rays.image.setPosition(view.x, view.y).setScale(view.width / 320, view.height / 150);
-    this.rays.update(dt);
 
     for (const l of this.lights) {
       const n = Math.sin(t * 9 + l.seed) * 0.5 + Math.sin(t * 23 + l.seed * 2) * 0.3 + Math.sin(t * 3.1 + l.seed) * 0.2;

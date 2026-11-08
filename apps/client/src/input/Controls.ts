@@ -27,15 +27,17 @@ export class Controls {
   constructor(scene: Phaser.Scene) {
     this.keys = scene.input.keyboard!.addKeys('W,A,S,D,UP,LEFT,DOWN,RIGHT') as Record<string, Phaser.Input.Keyboard.Key>;
     const input = scene.input;
+    // The canvas renders at device pixels; the joystick (HTML) lives in CSS pixels.
+    const css = (v: number) => v / scene.scale.displayScale.x;
     input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (this.press) return; // one finger steers at a time
-      this.press = { id: p.id, sx: p.x, sy: p.y, drag: false };
+      this.press = { id: p.id, sx: css(p.x), sy: css(p.y), drag: false };
     });
     input.on('pointermove', (p: Phaser.Input.Pointer) => {
       const pr = this.press;
       if (!pr || pr.id !== p.id || !p.isDown) return;
-      const dx = p.x - pr.sx;
-      const dy = p.y - pr.sy;
+      const dx = css(p.x) - pr.sx;
+      const dy = css(p.y) - pr.sy;
       const len = Math.hypot(dx, dy);
       if (!pr.drag && len > DRAG_START) {
         pr.drag = true;

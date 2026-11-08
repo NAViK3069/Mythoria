@@ -3,14 +3,17 @@ import { Controls } from '../input/Controls';
 import { Ambience } from '../world/Ambience';
 import { MasterCharacter } from '../world/MasterCharacter';
 import { MeadowView } from '../world/MeadowView';
-import { buildMeadow, COLS, ROWS, TILE, waterAt, type MeadowMap } from '../world/meadowMap';
+import { buildMeadow, COLS, ROWS, TILE, waterAt, type Footprint, type MeadowMap } from '../world/meadowMap';
 
 const SPEED = 62; // px/s
-const PLAYER_R = 4; // collision radius at the feet
+/** The player's own footprint: an ellipse round the feet. */
+const FOOT_RX = 4.5;
+const FOOT_RY = 2.5;
 
 /** The world map: walk the master character round the meadow. */
 export class WorldScene extends Phaser.Scene {
   private map!: MeadowMap;
+  private feet: Footprint[] = [];
   private view!: MeadowView;
   private ambience!: Ambience;
   private master!: MasterCharacter;
@@ -22,7 +25,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.map = buildMeadow();
+    const atlas = this.textures.get('meadow');
+    this.map = buildMeadow((frame) => {
+      const f = atlas.get(frame);
+      return { w: f.cutWidth, h: f.cutHeight };
+    });
+    this.feet = this.map.objects.flatMap((o) => (o.foot ? [o.foot] : []));
     this.view = new MeadowView(this, this.map);
 
     this.master = new MasterCharacter(this, this.map.spawn.x, this.map.spawn.y);
@@ -45,10 +53,15 @@ export class WorldScene extends Phaser.Scene {
     this.scale.on('resize', () => this.fitZoom());
   }
 
-  /** Whole-number zoom so pixels stay square; about 400 world px across the long side of the screen. */
+  /**
+   * Whole-number zoom (in device pixels) so pixels stay square. Aim to show about
+   * 540 world px across the short side of a computer/iPad screen, 360 on a phone.
+   */
   private fitZoom(): void {
-    const { width, height } = this.scale.gameSize;
-    const zoom = Phaser.Math.Clamp(Math.round(Math.max(width, height) / 420), 2, 6);
+    const dpr = this.scale.displayScale.x;
+    const cssShort = Math.min(window.innerWidth, window.innerHeight);
+    const target = cssShort < 500 ? 360 : 540;
+    const zoom = Phaser.Math.Clamp(Math.round((dpr * cssShort) / target), 1, 8);
     this.cameras.main.setZoom(zoom);
   }
 
@@ -75,7 +88,7 @@ export class WorldScene extends Phaser.Scene {
 
     const ox = m.x;
     const oy = m.y;
-    this.moveWithSlide(m, dx * SPEED * dt, dy * SPEED * dt);
+    this.move(m, dx * SPEED * dt, dy * SPEED * dt);
     m.vx = (m.x - ox) / dt;
     m.vy = (m.y - oy) / dt;
     // Walking into something on the way to a tap target: give up instead of pushing forever.
@@ -86,42 +99,43 @@ export class WorldScene extends Phaser.Scene {
     this.ambience.update(dt);
   }
 
-  /** Move, sliding along walls and pond banks instead of stopping dead. */
-  private moveWithSlide(m: MasterCharacter, mx: number, my: number): void {
-    if (this.free(m.x + mx, m.y + my)) {
+  /** Move, then let footprints push the feet out - so the player slides round trunks and along walls. */
+  private move(m: MasterCharacter, mx: number, my: number): void {
+    // pond banks: slide along them
+    if (this.ground(m.x + mx, m.y + my)) {
       m.x += mx;
       m.y += my;
-    } else if (this.free(m.x + mx, m.y)) {
+    } else if (this.ground(m.x + mx, m.y)) {
       m.x += mx;
-    } else if (this.free(m.x, m.y + my)) {
+    } else if (this.ground(m.x, m.y + my)) {
       m.y += my;
     }
-    this.pushOut(m);
-  }
-
-  private free(x: number, y: number): boolean {
-    if (x < 8 || y < 12 || x > COLS * TILE - 8 || y > ROWS * TILE - 4) return false;
-    return waterAt(this.map, x, y) < 0.45;
-  }
-
-  /** Round blockers (trees, rocks, walls) push the feet out smoothly. */
-  private pushOut(m: MasterCharacter): void {
-    for (const b of this.map.objects) {
-      if (!b.r) continue;
-      const dx = m.x - b.x;
-      const dy = m.y - (b.y - 2);
-      const min = b.r + PLAYER_R;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < min * min) {
-        const d = Math.sqrt(d2) || 0.001;
-        const nx = b.x + (dx / d) * min;
-        const ny = b.y - 2 + (dy / d) * min;
-        if (this.free(nx, ny)) {
+    for (let pass = 0; pass < 2; pass++) {
+      for (const f of this.feet) {
+        // Nearest point of the footprint's core (a point, or a flat segment for walls);
+        // the feet and the footprint touch on the ellipse ring round it.
+        const hl = f.hl ?? 0;
+        const cx = Phaser.Math.Clamp(m.x, f.x - hl, f.x + hl);
+        const a = f.rx + FOOT_RX;
+        const b = f.ry + FOOT_RY;
+        const ex = (m.x - cx) / a;
+        const ey = (m.y - f.y) / b;
+        const d = Math.hypot(ex, ey);
+        if (d >= 1) continue;
+        const nx = d > 1e-4 ? cx + (ex / d) * a : m.x;
+        const ny = d > 1e-4 ? f.y + (ey / d) * b : f.y + b;
+        if (this.ground(nx, ny)) {
           m.x = nx;
           m.y = ny;
         }
       }
     }
+  }
+
+  /** Walkable ground: inside the map and not in a pond. */
+  private ground(x: number, y: number): boolean {
+    if (x < 8 || y < 12 || x > COLS * TILE - 8 || y > ROWS * TILE - 4) return false;
+    return waterAt(this.map, x, y) < 0.45;
   }
 
   /** A little puff of dust where a foot lands. */

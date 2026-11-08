@@ -6,8 +6,8 @@ import { rng } from '../art/pixel';
 // its corners (Wang autotiling), so edges between terrains come out smooth.
 
 export const TILE = 16;
-export const COLS = 72;
-export const ROWS = 52;
+export const COLS = 96;
+export const ROWS = 68;
 
 export const enum T {
   Grass = 0,
@@ -16,12 +16,29 @@ export const enum T {
   Dark = 3,
 }
 
-export interface Placed {
-  frame: string; // atlas frame
-  x: number; // base (feet) position in px
+export type Kind = 'tree' | 'bush' | 'wall' | 'pillar' | 'rock' | 'prop' | 'lily' | 'decal' | 'brazier';
+
+/**
+ * The part of an object that stands on the ground, which you can't walk into:
+ * an ellipse (rx, ry), stretched sideways by `hl` into a capsule with a flat
+ * front and back - walls - so walking straight at one stops you instead of
+ * sliding you round it.
+ */
+export interface Footprint {
+  x: number;
   y: number;
-  r: number; // collision radius at the base, 0 = walk-through
-  kind: 'tree' | 'bush' | 'wall' | 'pillar' | 'rock' | 'prop' | 'lily' | 'decal';
+  rx: number;
+  ry: number;
+  hl?: number;
+}
+
+export interface Placed {
+  frame: string; // atlas frame ('' = drawn by something else, e.g. a brazier effect)
+  x: number; // base (bottom centre) position in px
+  y: number;
+  kind: Kind;
+  /** Where it blocks; none = walk-through (decals, lily pads, mushrooms). */
+  foot?: Footprint;
   shadow?: boolean;
 }
 
@@ -36,8 +53,36 @@ export interface MeadowMap {
   butterflies: { x: number; y: number }[];
 }
 
+/** Size of an atlas frame, so footprints and spacing can follow the art. */
+export type SizeOf = (frame: string) => { w: number; h: number };
+
 const VW = COLS + 1;
 const VH = ROWS + 1;
+
+/**
+ * The ground-contact ellipse of each kind of thing, from its picture's size.
+ * Only the base blocks: you can walk "behind" a tree's canopy or the top of a wall.
+ */
+export function footprintFor(kind: Kind, x: number, y: number, w: number, h: number): Footprint | undefined {
+  switch (kind) {
+    case 'tree':
+      return { x, y: y - 3, rx: 5, ry: 3 }; // the trunk
+    case 'wall':
+      return { x, y: y - 5, rx: 5, ry: 5, hl: Math.max(0, w * 0.44 - 5) };
+    case 'pillar':
+      return { x, y: y - 4, rx: Math.min(8, w * 0.4), ry: 4 };
+    case 'rock':
+      return { x, y: y - h * 0.3, rx: w * 0.42, ry: Math.max(3, h * 0.28) };
+    case 'bush':
+      return { x, y: y - h * 0.25, rx: w * 0.36, ry: Math.max(3, h * 0.2) };
+    case 'prop':
+      return { x, y: y - 3.5, rx: w * 0.4, ry: 3.5 };
+    case 'brazier':
+      return { x, y: y - 2, rx: 4, ry: 2.5 };
+    default:
+      return undefined;
+  }
+}
 
 /** Smooth value noise in [0, 1]. */
 function noise2(seed: number) {
@@ -62,7 +107,12 @@ const distToSegment = (px: number, py: number, ax: number, ay: number, bx: numbe
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 };
 
-export function buildMeadow(): MeadowMap {
+// The layout is designed on a 72 x 52 sketch and stretched onto the real grid.
+const KX = COLS / 72;
+const KY = ROWS / 52;
+const KR = (KX + KY) / 2;
+
+export function buildMeadow(sizeOf: SizeOf): MeadowMap {
   const vert = new Uint8Array(VW * VH);
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= VW || y >= VH ? T.Grass : vert[y * VW + x]);
   const set = (x: number, y: number, t: T) => {
@@ -75,27 +125,27 @@ export function buildMeadow(): MeadowMap {
     [11, 35, 4.5], [15, 39, 4.5], [10, 42, 3.5], [19, 36, 3], [16, 44, 3], // the big L-shaped pond (west)
     [55, 9, 4], [60, 11, 3.5], [57, 14, 2.6], // north-east pond
     [46, 44, 2.6], [49, 45, 2], // a small one south
-  ];
+  ].map(([x, y, r]) => [x * KX, y * KY, r * KR]);
   for (let y = 0; y < VH; y++) {
     for (let x = 0; x < VW; x++) {
-      const wob = (n1(x / 3, y / 3) - 0.5) * 2.2;
+      const wob = (n1(x / 3, y / 3) - 0.5) * 2.4;
       if (ponds.some(([cx, cy, r]) => Math.hypot(x - cx, y - cy) < r + wob)) set(x, y, T.Water);
     }
   }
 
   // --- dirt paths from the clearing in the middle, out to each side
-  const spawn = { tx: 34, ty: 26 };
-  const paths: [number, number][][] = [
-    [[34, 26], [33, 19], [36, 12], [35, 4], [36, 0]],
-    [[34, 26], [42, 27], [50, 24], [60, 26], [72, 25]],
-    [[34, 26], [27, 28], [22, 25], [12, 24], [0, 26]],
-    [[34, 26], [36, 33], [33, 41], [36, 52]],
-  ];
+  const spawnT = { x: 34 * KX, y: 26 * KY };
+  const paths = [
+    [[34, 26], [33, 19], [36, 12], [35, 4], [36, -1]],
+    [[34, 26], [42, 27], [50, 24], [60, 26], [73, 25]],
+    [[34, 26], [27, 28], [22, 25], [12, 24], [-1, 26]],
+    [[34, 26], [36, 33], [33, 41], [36, 53]],
+  ].map((p) => p.map(([x, y]) => [x * KX, y * KY]));
   for (let y = 0; y < VH; y++) {
     for (let x = 0; x < VW; x++) {
       if (at(x, y) === T.Water) continue;
-      let d = Math.hypot(x - spawn.tx, y - spawn.ty) - 2.6; // a clearing at the crossroads
-      for (const p of paths) for (let i = 0; i + 1 < p.length; i++) d = Math.min(d, distToSegment(x, y, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]) - 0.9);
+      let d = Math.hypot(x - spawnT.x, y - spawnT.y) - 3; // a clearing at the crossroads
+      for (const p of paths) for (let i = 0; i + 1 < p.length; i++) d = Math.min(d, distToSegment(x, y, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]) - 1);
       if (d + (n2(x / 2.5, y / 2.5) - 0.5) * 1.2 < 0.35) set(x, y, T.Path);
     }
   }
@@ -108,7 +158,7 @@ export function buildMeadow(): MeadowMap {
   for (let y = 0; y < VH; y++) {
     for (let x = 0; x < VW; x++) {
       if (at(x, y) !== T.Grass) continue;
-      if (n3(x / 6, y / 6) > 0.6 && !near(x, y, T.Water, 2) && !near(x, y, T.Path, 2)) set(x, y, T.Dark);
+      if (n3(x / 7, y / 7) > 0.6 && !near(x, y, T.Water, 2) && !near(x, y, T.Path, 2)) set(x, y, T.Dark);
     }
   }
 
@@ -130,103 +180,150 @@ export function buildMeadow(): MeadowMap {
   const objects: Placed[] = [];
   const decals: Placed[] = [];
   const terrainAt = (px: number, py: number) => at(Math.round(px / TILE), Math.round(py / TILE));
-  const clearOf = (px: number, py: number, rad: number, allowDark = true) => {
-    for (const dy of [-1, 0, 1]) for (const dx of [-1, 0, 1]) {
-      const t = terrainAt(px + dx * rad, py + dy * rad);
-      if (t === T.Water || t === T.Path || (!allowDark && t === T.Dark)) return false;
+
+  /** Half the visible width of something - how much room it needs round it. */
+  const room = (o: { frame: string; kind: Kind }) => (o.frame ? sizeOf(o.frame).w / 2 : 6) * (o.kind === 'tree' ? 0.85 : 1);
+  /** Can this stand here without its picture crowding another, or its base sitting on water/path? */
+  const fits = (frame: string, kind: Kind, x: number, y: number) => {
+    const { w } = sizeOf(frame);
+    const half = w * 0.45;
+    for (const [dx, dy] of [[-half, 0], [half, 0], [0, -3], [0, 3]]) {
+      const t = terrainAt(x + dx, y + dy);
+      if (t === T.Water || t === T.Path) return false;
     }
-    return objects.every((o) => o.r === 0 || Math.hypot(o.x - px, o.y - py) > o.r + rad + 2);
+    const me = room({ frame, kind });
+    const myH = sizeOf(frame).h;
+    const myW = sizeOf(frame).w;
+    /** Is the base at (bx, by) inside the picture of the thing standing at (fx, fy)? */
+    const hides = (fx: number, fy: number, fw: number, fh: number, bx: number, by: number) =>
+      fy > by && Math.abs(bx - fx) < fw * 0.42 && by > fy - fh * 0.92;
+    return objects.every((o) => {
+      if (o.kind === 'lily') return true;
+      const os = o.frame ? sizeOf(o.frame) : { w: 8, h: 8 };
+      if (hides(o.x, o.y, os.w, os.h, x, y) || hides(x, y, myW, myH, o.x, o.y)) return false;
+      const need = me + room(o);
+      const dx = o.x - x;
+      const dy = o.y - y;
+      // Whichever stands in front must not hide the other's base: the one behind has to
+      // sit above the front one's picture, or far enough to the side. An ellipse of
+      // personal space does both and keeps clumps looking natural.
+      const frontH = dy > 0 ? (o.frame ? sizeOf(o.frame).h : 8) : myH;
+      const k = kind === 'tree' && o.kind === 'tree' ? 0.95 : 0.8;
+      const ax = need * k;
+      const ay = Math.max(8, frontH * (kind === 'tree' && o.kind === 'tree' ? 0.82 : 0.6));
+      return (dx / ax) ** 2 + (dy / ay) ** 2 > 1;
+    });
   };
-  const add = (p: Placed) => objects.push(p);
-  const sx = spawn.tx * TILE, sy = spawn.ty * TILE;
+  const add = (frame: string, kind: Kind, x: number, y: number, shadow = true) => {
+    const { w, h } = frame ? sizeOf(frame) : { w: 8, h: 8 };
+    objects.push({ frame, kind, x, y, shadow, foot: footprintFor(kind, x, y, w, h) });
+  };
+  const sx = Math.round(spawnT.x) * TILE, sy = Math.round(spawnT.y) * TILE;
 
   // the ruined shrine north-east of the clearing: a broken ring of walls and pillars
-  const shrine = { x: 46 * TILE, y: 16 * TILE };
-  const ring: [string, number, number, number][] = [
-    ['wall0', -40, -26, 18], ['wall4', 6, -34, 18], ['pillar0', 44, -22, 7], ['wall2', 52, 4, 16],
-    ['pillar2', 40, 30, 7], ['wall6', -6, 34, 16], ['pillar3', -46, 22, 7], ['wall8', -56, -4, 16],
+  const shrine = { x: Math.round(46 * KX) * TILE, y: Math.round(16 * KY) * TILE };
+  const ring: [string, Kind, number, number][] = [
+    ['wall0', 'wall', -44, -30], ['wall4', 'wall', 8, -38], ['pillar0', 'pillar', 50, -24], ['wall2', 'wall', 58, 6],
+    ['pillar2', 'pillar', 44, 34], ['wall6', 'wall', -8, 40], ['pillar3', 'pillar', -52, 26], ['wall8', 'wall', -62, -2],
   ];
-  for (const [f, dx, dy, rad] of ring) add({ frame: f, x: shrine.x + dx, y: shrine.y + dy, r: rad, kind: f.startsWith('wall') ? 'wall' : 'pillar', shadow: true });
-  add({ frame: 'chest2', x: shrine.x, y: shrine.y + 4, r: 7, kind: 'prop', shadow: true });
-  const braziers = [{ x: shrine.x - 22, y: shrine.y + 2 }, { x: shrine.x + 22, y: shrine.y + 2 }];
-  for (const b of braziers) objects.push({ frame: '', x: b.x, y: b.y, r: 5, kind: 'prop' });
-  const wisps = [{ x: shrine.x, y: shrine.y - 20 }];
+  for (const [f, k, dx, dy] of ring) add(f, k, shrine.x + dx, shrine.y + dy);
+  add('chest2', 'prop', shrine.x, shrine.y + 4);
+  const braziers = [{ x: shrine.x - 24, y: shrine.y + 4 }, { x: shrine.x + 24, y: shrine.y + 4 }];
+  for (const b of braziers) add('', 'brazier', b.x, b.y, false);
+  const wisps = [{ x: shrine.x, y: shrine.y - 22 }];
 
   // smaller ruins scattered about
-  const ruinSpots: [number, number][] = [[20, 13], [57, 38], [26, 44], [62, 19], [8, 15]];
+  const ruinSpots: [number, number][] = [[20, 13], [57, 38], [26, 44], [63, 19], [8, 15], [44, 5]];
   for (const [tx, ty] of ruinSpots) {
-    const x = tx * TILE, y = ty * TILE;
-    if (!clearOf(x, y, 16)) continue;
-    add({ frame: pick(['wall1', 'wall3', 'wall5', 'wall7', 'wall9', 'wall10']), x, y, r: 15, kind: 'wall', shadow: true });
-    if (r() < 0.8) add({ frame: pick(['pillar1', 'pillar4', 'pillar5', 'pillar6']), x: x + 26 + r() * 8, y: y + 10, r: 7, kind: 'pillar', shadow: true });
-    if (r() < 0.6) add({ frame: pick(['rock0', 'rock4', 'rock5']), x: x - 22, y: y + 14, r: 6, kind: 'rock', shadow: true });
+    const x = Math.round(tx * KX) * TILE, y = Math.round(ty * KY) * TILE;
+    const wall = pick(['wall1', 'wall3', 'wall5', 'wall7', 'wall9', 'wall10']);
+    if (!fits(wall, 'wall', x, y)) continue;
+    add(wall, 'wall', x, y);
+    const pillar = pick(['pillar1', 'pillar4', 'pillar5', 'pillar6']);
+    const px = x + sizeOf(wall).w / 2 + sizeOf(pillar).w / 2 + 4, py = y + 8;
+    if (r() < 0.8 && fits(pillar, 'pillar', px, py)) add(pillar, 'pillar', px, py);
+    const rock = pick(['rock0', 'rock4', 'rock5']);
+    const rx = x - sizeOf(wall).w / 2 - 8, ry = y + 12;
+    if (r() < 0.6 && fits(rock, 'rock', rx, ry)) add(rock, 'rock', rx, ry);
   }
 
   // camp props by the clearing
-  add({ frame: 'barrel0', x: sx - 46, y: sy - 30, r: 6, kind: 'prop', shadow: true });
-  add({ frame: 'barrel1', x: sx - 36, y: sy - 34, r: 6, kind: 'prop', shadow: true });
-  add({ frame: 'crate0', x: sx - 50, y: sy - 16, r: 7, kind: 'prop', shadow: true });
-  add({ frame: 'chest0', x: 23 * TILE, y: 31 * TILE, r: 7, kind: 'prop', shadow: true });
-  add({ frame: 'crate1', x: 58 * TILE, y: 31 * TILE, r: 7, kind: 'prop', shadow: true });
+  const camp: [string, Kind, number, number][] = [
+    ['barrel0', 'prop', -58, -34], ['barrel1', 'prop', -44, -40], ['crate0', 'prop', -64, -16],
+  ];
+  for (const [f, k, dx, dy] of camp) add(f, k, sx + dx, sy + dy);
+  add('chest0', 'prop', Math.round(23 * KX) * TILE, Math.round(31 * KY) * TILE);
+  add('crate1', 'prop', Math.round(58 * KX) * TILE, Math.round(31 * KY) * TILE);
 
-  // forest: thick round the edge, clumps inside
+  // forest: thick round the edge, clumps inside - trees spaced so every trunk shows
   const fn = noise2(9);
-  const treeAt = (x: number, y: number) => add({ frame: `tree${Math.floor(r() * 8)}`, x, y, r: 7, kind: 'tree', shadow: true });
-  for (let i = 0; i < 2600; i++) {
-    const x = r() * COLS * TILE, y = r() * (ROWS * TILE + 24);
-    const edge = Math.min(x, y, COLS * TILE - x, ROWS * TILE - y) / TILE;
-    const dense = edge < 2.5 || (edge < 6 && fn(x / 70, y / 70) > 0.5) || fn(x / 90, y / 90) > 0.68;
-    if (!dense || Math.hypot(x - sx, y - sy) < 90 || Math.hypot(x - shrine.x, y - shrine.y) < 80) continue;
-    if (clearOf(x, y, 15)) treeAt(x, y);
+  const W = COLS * TILE, H = ROWS * TILE;
+  for (let i = 0; i < 9000; i++) {
+    const x = -10 + r() * (W + 20), y = r() * (H + 30);
+    const edge = Math.min(x, y, W - x, H - y) / TILE;
+    const dense = edge < 2.5 || (edge < 7 && fn(x / 80, y / 80) > 0.48) || fn(x / 100, y / 100) > 0.67;
+    if (!dense || Math.hypot(x - sx, y - sy) < 110 || Math.hypot(x - shrine.x, y - shrine.y) < 100) continue;
+    const f = `tree${Math.floor(r() * 8)}`;
+    if (fits(f, 'tree', x, y)) add(f, 'tree', x, y);
   }
   // bushes, rocks, stumps, mushrooms
-  const scatter = (n: number, frames: string[], kind: Placed['kind'], rad: number, gap: number, where?: (x: number, y: number) => boolean) => {
-    for (let i = 0, tries = 0; i < n && tries < n * 40; tries++) {
-      const x = 24 + r() * (COLS * TILE - 48), y = 24 + r() * (ROWS * TILE - 48);
-      if (Math.hypot(x - sx, y - sy) < 40 || !clearOf(x, y, gap) || (where && !where(x, y))) continue;
-      add({ frame: pick(frames), x, y, r: rad, kind, shadow: kind !== 'bush' || r() < 0.5 });
+  const scatter = (n: number, frames: string[], kind: Kind, where?: (x: number, y: number) => boolean) => {
+    for (let i = 0, tries = 0; i < n && tries < n * 60; tries++) {
+      const x = 24 + r() * (W - 48), y = 30 + r() * (H - 54);
+      const f = pick(frames);
+      if (Math.hypot(x - sx, y - sy) < 50 || !fits(f, kind, x, y) || (where && !where(x, y))) continue;
+      add(f, kind, x, y, kind !== 'bush' || r() < 0.6);
       i++;
     }
   };
-  scatter(70, Array.from({ length: 12 }, (_, i) => `bush${i}`), 'bush', 6, 8);
-  scatter(22, ['rock0', 'rock1', 'rock2', 'rock3', 'rock4', 'rock5', 'rock6', 'rock7'], 'rock', 6, 8);
-  scatter(10, ['stump0', 'stump1', 'stump2'], 'prop', 6, 8);
-  scatter(18, ['mushroom0', 'mushroom1', 'mushroom2'], 'prop', 0, 6, (x, y) => fn(x / 90, y / 90) > 0.5);
+  scatter(110, Array.from({ length: 12 }, (_, i) => `bush${i}`), 'bush');
+  scatter(34, ['rock0', 'rock1', 'rock2', 'rock3', 'rock4', 'rock5', 'rock6', 'rock7'], 'rock');
+  scatter(16, ['stump0', 'stump1', 'stump2'], 'prop');
+  // mushrooms are walk-through: no footprint
+  for (let i = 0, tries = 0; i < 26 && tries < 3000; tries++) {
+    const x = 24 + r() * (W - 48), y = 30 + r() * (H - 54);
+    const f = pick(['mushroom0', 'mushroom1', 'mushroom2']);
+    if (fn(x / 100, y / 100) < 0.5 || !fits(f, 'decal', x, y)) continue;
+    objects.push({ frame: f, kind: 'decal', x, y, shadow: true });
+    i++;
+  }
   // rocks along the pond banks
-  for (let i = 0, tries = 0; i < 16 && tries < 3000; tries++) {
-    const x = r() * COLS * TILE, y = r() * ROWS * TILE;
-    if (terrainAt(x, y) === T.Water || !near(Math.round(x / TILE), Math.round(y / TILE), T.Water, 1) || !clearOf(x, y, 6)) continue;
-    add({ frame: pick(['rock4', 'rock5', 'rock6', 'rock7', 'rock0']), x, y, r: 5, kind: 'rock', shadow: true });
+  for (let i = 0, tries = 0; i < 22 && tries < 4000; tries++) {
+    const x = r() * W, y = r() * H;
+    if (terrainAt(x, y) === T.Water || !near(Math.round(x / TILE), Math.round(y / TILE), T.Water, 1)) continue;
+    const f = pick(['rock4', 'rock5', 'rock6', 'rock7', 'rock0']);
+    if (!fits(f, 'rock', x, y)) continue;
+    add(f, 'rock', x, y);
     i++;
   }
 
   // lily pads: on open water only
   for (let y = 1; y < ROWS; y++) {
     for (let x = 1; x < COLS; x++) {
-      if (at(x, y) !== T.Water || !near(x, y, T.Water, 1) || r() > 0.22) continue;
+      if (at(x, y) !== T.Water || r() > 0.2) continue;
       let open = true;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (at(x + dx, y + dy) !== T.Water) open = false;
-      if (open) objects.push({ frame: `lily${Math.floor(r() * 5)}`, x: x * TILE + (r() - 0.5) * 8, y: y * TILE + (r() - 0.5) * 8, r: 0, kind: 'lily' });
+      if (open) objects.push({ frame: `lily${Math.floor(r() * 5)}`, x: x * TILE + (r() - 0.5) * 8, y: y * TILE + (r() - 0.5) * 8, kind: 'lily' });
     }
   }
 
-  // ground decals: grass tufts everywhere, flowers in drifts, pebbles near paths
+  // ground decals: grass tufts everywhere, flowers in drifts, pebbles on paths
   const fl = noise2(5);
-  for (let i = 0; i < 1500; i++) {
-    const x = r() * COLS * TILE, y = r() * ROWS * TILE;
+  for (let i = 0; i < 2600; i++) {
+    const x = r() * W, y = r() * H;
     const t = terrainAt(x, y);
     if (t === T.Water) continue;
     if (t === T.Path) {
-      if (r() < 0.25) decals.push({ frame: `pebble${Math.floor(r() * 6)}`, x, y, r: 0, kind: 'decal' });
+      if (r() < 0.25) decals.push({ frame: `pebble${Math.floor(r() * 6)}`, x, y, kind: 'decal' });
       continue;
     }
-    const flowers = fl(x / 60, y / 60) > 0.55;
-    if (flowers && r() < 0.6) decals.push({ frame: `flower${Math.floor(r() * 9)}`, x, y, r: 0, kind: 'decal' });
-    else if (r() < 0.45) decals.push({ frame: `tuft${Math.floor(r() * 10)}`, x, y, r: 0, kind: 'decal' });
+    const flowers = fl(x / 70, y / 70) > 0.55;
+    if (flowers && r() < 0.6) decals.push({ frame: `flower${Math.floor(r() * 9)}`, x, y, kind: 'decal' });
+    else if (r() < 0.45) decals.push({ frame: `tuft${Math.floor(r() * 10)}`, x, y, kind: 'decal' });
   }
 
   const butterflies = [
-    { x: sx + 60, y: sy + 40 }, { x: 18 * TILE, y: 30 * TILE }, { x: 52 * TILE, y: 34 * TILE }, { x: 30 * TILE, y: 12 * TILE },
+    { x: sx + 70, y: sy + 50 }, { x: 18 * KX * TILE, y: 30 * KY * TILE }, { x: 52 * KX * TILE, y: 34 * KY * TILE }, { x: 30 * KX * TILE, y: 12 * KY * TILE },
   ];
 
   return { vert, objects, decals, spawn: { x: sx, y: sy }, braziers, wisps, butterflies };
