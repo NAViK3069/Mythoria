@@ -27,7 +27,7 @@ PICKS = {
     "walls": ("ruin", [0, 2, 3, 4, 10, 11, 12, 13, 14, 16, 20], "wall"),
     "pillars": ("ruin", [5, 7, 17, 19, 21, 22, 24], "pillar"),
     "rocks": ("rock2", [3, 12, 15, 21, 23, 29, 35, 41, 48, 49, 50, 55], "rock"),
-    "boulders": ("boulder", [3, 6, 7, 11, 12, 15, 17, 18], "boulder"),
+    "boulders": ("boulder2", [0, 2, 5, 7, 12, 14, 17, 21], "boulder"),
     "chests": ("props", [16, 17, 22], "chest"),
     "barrels": ("props", [24, 26], "barrel"),
     "crates": ("props", [32, 33, 37], "crate"),
@@ -52,12 +52,54 @@ def copy_from_download(dl):
         shutil.copy(os.path.join(dl, base + ".json"), os.path.join(SRC, "tiles", name + ".json"))
 
 
+def strip_ground(im):
+    """Remove the patch of dirt/grass the generator painted under a rock, so it sits on our own ground.
+
+    In each column, find the lowest pixel of real stone (grey), close the rock with one outline pixel
+    under it, and clear everything below - grass blades, dirt, flowers. Edge columns that are only
+    outline keep their outline. The result is a clean bottom edge that follows the rock's body.
+    """
+    im = im.copy()
+    px = im.load()
+    w, h = im.size
+    OUTLINE = (24, 24, 28, 255)
+
+    def grey(c):
+        r, g, b, a = c
+        hi, lo = max(r, g, b), min(r, g, b)
+        greenish = g > r + 3 and g > b + 1  # mossy grass is grey-green; stone is neutral or blue-grey
+        return a >= 100 and hi >= 40 and hi - lo < 22 and not greenish
+
+    def dark(c):
+        r, g, b, a = c
+        hi, lo = max(r, g, b), min(r, g, b)
+        return a >= 100 and hi < 40 and hi - lo < 14
+
+    for x in range(w):
+        body = max((y for y in range(h) if grey(px[x, y])), default=-1)
+        if body >= 0:
+            if body + 1 < h:
+                px[x, body + 1] = OUTLINE
+            clear_from = body + 2
+        else:
+            edge = max((y for y in range(h) if dark(px[x, y])), default=-1)
+            clear_from = edge + 1
+        for y in range(clear_from, h):
+            px[x, y] = (0, 0, 0, 0)
+    return im
+
+
+GROUNDLESS = {"rocks"}  # boulders were redrawn with no ground under them
+
+
 def pack_props():
     items = []
     for cat in PICKS:
         d = os.path.join(SRC, cat)
         for f in sorted(os.listdir(d)):
             im = Image.open(os.path.join(d, f)).convert("RGBA")
+            if cat in GROUNDLESS:
+                im = strip_ground(im)
             box = im.getbbox()
             if box:
                 items.append((f[:-4], im.crop(box)))

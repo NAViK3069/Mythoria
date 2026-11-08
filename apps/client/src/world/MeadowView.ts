@@ -37,7 +37,7 @@ export class MeadowView {
     scene.textures.addCanvas('shadows', cast);
     scene.add.image(0, 0, 'shadows').setOrigin(0, 0).setDepth(1).setAlpha(0.26);
     scene.textures.addCanvas('contact', contact);
-    scene.add.image(0, 0, 'contact').setOrigin(0, 0).setDepth(1.1).setAlpha(0.22);
+    scene.add.image(0, 0, 'contact').setOrigin(0, 0).setDepth(1.1).setAlpha(0.3);
     // Light that belongs to the level: shade under the woods, warm sun pooling in the clearings.
     const [shade, sun] = this.bakeLight();
     scene.textures.addCanvas('shade', shade)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
@@ -154,24 +154,33 @@ export class MeadowView {
       }
       return s;
     };
-    const SQUASH: Partial<Record<Placed['kind'], number>> = { tree: 0.34, bush: 0.42, wall: 0.42, pillar: 0.32, rock: 0.48, prop: 0.45, decal: 0.45 };
+    // cast shadows: tall things throw a longer one; low things (rocks, props) barely any
+    const SQUASH: Partial<Record<Placed['kind'], number>> = { tree: 0.34, bush: 0.36, wall: 0.36, pillar: 0.3, rock: 0.28, prop: 0.32, decal: 0.3 };
     cg.fillStyle = '#000000';
     kg.fillStyle = '#000000';
     for (const o of this.map.objects) {
       if (!o.frame || o.kind === 'lily') continue;
+      const s = silhouette(o.frame);
       if (o.shadow) {
-        const s = silhouette(o.frame);
-        const sh = Math.max(3, Math.round(s.height * (SQUASH[o.kind] ?? 0.42)));
+        const sh = Math.max(3, Math.round(s.height * (SQUASH[o.kind] ?? 0.36)));
         const sw = s.width + 2;
-        const dx = Math.round(s.height * 0.07) + 1;
+        const dx = o.kind === 'tree' ? Math.round(s.height * 0.07) + 1 : 1;
         const dy = Math.round(sh * 0.3);
         cg.drawImage(s, Math.round(o.x - sw / 2 + dx), Math.round(o.y - sh + dy), sw, sh);
       }
-      const f = o.foot;
-      if (f) {
-        kg.beginPath();
-        kg.ellipse(f.x + 1, f.y + f.hd * 0.45, f.hw + 1.5, f.hd + 1, 0, 0, Math.PI * 2);
-        kg.fill();
+      // contact shadow: where it touches the ground. For trees, round the trunk; for everything
+      // else its own outline pressed flat and tucked right under its bottom edge, so it sits IN
+      // the grass instead of on a separate patch.
+      if (o.kind === 'tree') {
+        const f = o.foot;
+        if (f) {
+          kg.beginPath();
+          kg.ellipse(f.x + 1, f.y + f.hd * 0.45, f.hw + 2, f.hd + 1, 0, 0, Math.PI * 2);
+          kg.fill();
+        }
+      } else {
+        const ch = Math.max(2, Math.round(s.height * 0.16));
+        kg.drawImage(s, Math.round(o.x - s.width / 2 - 1), Math.round(o.y - ch + 2), s.width + 2, ch);
       }
     }
     // keep them crisp: every pixel either in shadow or not

@@ -252,7 +252,7 @@ export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
     const myW = sizeOf(frame).w;
     /** Is the base at (bx, by) inside the picture of the thing standing at (fx, fy)? */
     const hides = (fx: number, fy: number, fw: number, fh: number, bx: number, by: number) =>
-      fy > by && Math.abs(bx - fx) < fw * 0.42 && by > fy - fh * 0.92;
+      fy > by && Math.abs(bx - fx) < fw * 0.5 && by > fy - fh - 6;
     return objects.every((o) => {
       if (o.kind === 'lily') return true;
       const os = o.frame ? sizeOf(o.frame) : { w: 8, h: 8 };
@@ -297,7 +297,7 @@ export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
     const pillar = pick(['pillar1', 'pillar4', 'pillar5', 'pillar6']);
     const px = x + sizeOf(wall).w / 2 + sizeOf(pillar).w / 2 + 4, py = y + 8;
     if (r() < 0.8 && fits(pillar, 'pillar', px, py)) add(pillar, 'pillar', px, py);
-    const rock = pick(BOULDERS);
+    const rock = pick(ROCKS);
     const rx = x - sizeOf(wall).w / 2 - 8, ry = y + 12;
     if (r() < 0.6 && fits(rock, 'rock', rx, ry)) add(rock, 'rock', rx, ry);
   }
@@ -332,8 +332,8 @@ export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
     }
   };
   scatter(110, Array.from({ length: 12 }, (_, i) => `bush${i}`), 'bush');
-  scatter(26, ROCKS, 'rock');
-  scatter(12, BOULDERS, 'rock');
+  scatter(30, ROCKS, 'rock');
+  scatter(10, BOULDERS, 'rock');
   scatter(16, ['stump0', 'stump1', 'stump2'], 'prop');
   // mushrooms are walk-through: no footprint
   for (let i = 0, tries = 0; i < 26 && tries < 3000; tries++) {

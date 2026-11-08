@@ -1,8 +1,5 @@
 import * as Phaser from 'phaser';
-import * as ripplesFx from 'pixelfx/fx/water/ripples';
-import type { FxModule } from 'pixelfx';
 import { makeCanvas, rng } from '../art/pixel';
-import { FxSprite } from '../fx/FxSprite';
 import { COLS, ROWS, T, TILE, vertexAt, waterAt, type MeadowMap } from './meadowMap';
 
 /** How often the water surface is redrawn - with continuous time, 30 fps like pixelfx. */
@@ -242,7 +239,7 @@ interface LilyPad {
  * Living ponds, redrawn live at 30 fps so everything moves smoothly: water
  * coloured by depth - pale near the shore, deep blue in the middle - the bank
  * reflected and swaying, light crests sliding across the surface and foam
- * lapping at the bank; a pixelfx ripple spring in the big pond; lily pads that
+ * lapping at the bank; lily pads that
  * drift on a gentle current, nudge each other apart, turn when they bump and
  * send out rings.
  */
@@ -250,7 +247,6 @@ export class Ponds {
   private readonly surfaces: PondSurface[] = [];
   private readonly lilies: LilyPad[] = [];
   private readonly ripples: Ripple[] = [];
-  private readonly springs: FxSprite[] = [];
   private time = 0;
   private acc = 0;
   private rippleT = 1;
@@ -258,33 +254,11 @@ export class Ponds {
 
   constructor(private readonly scene: Phaser.Scene, private readonly map: MeadowMap, ground: HTMLCanvasElement) {
     const g = ground.getContext('2d', { willReadFrequently: true })!;
-    const boxes = this.findPonds();
-    boxes.forEach((box, i) => {
+    this.findPonds().forEach((box, i) => {
       const src = g.getImageData(box.x, box.y, box.w, box.h).data;
       this.surfaces.push(new PondSurface(scene, `pond${i}`, box, src, this.reflections(box)));
     });
     for (let i = 0; i < 6; i++) this.ripples.push(new Ripple(scene, `ripple${i}`, 14));
-    // a little spring bubbling up in the biggest pond (pixelfx "Ripples")
-    const big = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a), boxes[0]);
-    if (big) {
-      const spot = this.openWater(big, 30);
-      if (spot) {
-        const fx = new FxSprite(scene, ripplesFx as unknown as FxModule, spot.x, spot.y, { opts: { seed: 5 } });
-        fx.image.setScale(0.5).setAlpha(0.75).setDepth(1.4);
-        this.springs.push(fx);
-      }
-    }
-  }
-
-  /** A spot at least `margin` px from any bank. */
-  private openWater(box: { x: number; y: number; w: number; h: number }, margin: number) {
-    for (let k = 0; k < 400; k++) {
-      const x = box.x + this.r() * box.w, y = box.y + this.r() * box.h;
-      let ok = true;
-      for (const [dx, dy] of [[margin, 0], [-margin, 0], [0, margin * 0.5], [0, -margin * 0.5], [0, 0]]) if (waterAt(this.map, x + dx, y + dy) < 0.99) ok = false;
-      if (ok) return { x, y };
-    }
-    return null;
   }
 
   /** Bounding boxes (px) of each body of water, from the terrain corners. */
@@ -362,7 +336,6 @@ export class Ponds {
         s.draw(t);
       }
     }
-    for (const f of this.springs) f.update(dt);
     for (const r of this.ripples) r.update(dt);
 
     this.updateLilies(dt, t);
