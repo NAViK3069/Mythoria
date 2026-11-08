@@ -34,7 +34,7 @@ function iconButton(name: string, label: string, panel: string, cls = '', dot?: 
 
 function coin(name: string, value: () => string, onPlus: () => void): HTMLElement {
   const v = h('span', { class: 'v num' });
-  const el = h('div', { class: 'coin px-cut' }, icon(name, 30), v, h('button', { class: 'plus px-cut', onclick: onPlus, 'aria-label': 'เติม' }, '+'));
+  const el = h('div', { class: 'coin px-cut' }, icon(name, 24), v, h('button', { class: 'plus px-cut', onclick: onPlus, 'aria-label': 'เติม' }, '+'));
   const update = () => (v.textContent = value());
   update();
   onChange(update);
@@ -102,7 +102,7 @@ export function createHud(getFps: () => number): Hud {
 
   root.append(
     h('div', { class: 'hud-top-left' }, profile, tracker),
-    h('div', { class: 'hud-top-right' }, system, wallet),
+    h('div', { class: 'hud-top-right' }, wallet, system),
     side,
     h('div', { class: 'hud-bottom' }, chatPeek, dock, play),
     fps,

@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { Controls } from '../input/Controls';
+import { MoveMarkers } from '../world/MoveMarker';
 import { createHud, type Hud } from '../ui/Hud';
 import { Ambience } from '../world/Ambience';
 import { MasterCharacter } from '../world/MasterCharacter';
@@ -19,7 +20,7 @@ export class WorldScene extends Phaser.Scene {
   private ambience!: Ambience;
   private master!: MasterCharacter;
   private controls!: Controls;
-  private marker!: Phaser.GameObjects.Image;
+  private markers!: MoveMarkers;
   private hud!: Hud;
 
   constructor() {
@@ -42,10 +43,10 @@ export class WorldScene extends Phaser.Scene {
 
     this.ambience = new Ambience(this, this.map);
 
-    this.marker = this.add.image(0, 0, this.markerTexture()).setDepth(2).setVisible(false);
+    this.markers = new MoveMarkers(this);
     this.controls = new Controls(this);
     this.controls.onTarget = (x, y) => {
-      this.marker.setPosition(Math.round(x), Math.round(y)).setVisible(true).setAlpha(1);
+      this.markers.spawn(x, y);
     };
 
     const cam = this.cameras.main;
@@ -129,7 +130,7 @@ export class WorldScene extends Phaser.Scene {
         dy = (ty / dist) * k;
       }
     }
-    if (!this.controls.target) this.marker.setAlpha(Math.max(0, this.marker.alpha - dt * 4));
+    this.markers.update(dt);
 
     const ox = m.x;
     const oy = m.y;
@@ -137,7 +138,7 @@ export class WorldScene extends Phaser.Scene {
     m.vx = (m.x - ox) / dt;
     m.vy = (m.y - oy) / dt;
     // Walking into something on the way to a tap target: give up instead of pushing forever.
-    if (this.controls.target && Math.hypot(m.vx, m.vy) < SPEED * 0.15) this.controls.target = null;
+    if (this.controls.target && !this.controls.steering && Math.hypot(m.vx, m.vy) < SPEED * 0.15) this.controls.target = null;
     m.update(dt);
 
     this.view.moving = Math.hypot(m.vx, m.vy) > 5;
@@ -206,19 +207,5 @@ export class WorldScene extends Phaser.Scene {
         onComplete: () => p.destroy(),
       });
     }
-  }
-
-  private markerTexture(): string {
-    const key = 'marker';
-    if (!this.textures.exists(key)) {
-      const c = document.createElement('canvas');
-      c.width = 9;
-      c.height = 5;
-      const g = c.getContext('2d')!;
-      g.fillStyle = '#ffffff';
-      for (const [x, y] of [[4, 0], [2, 1], [6, 1], [0, 2], [8, 2], [2, 3], [6, 3], [4, 4], [1, 2], [7, 2], [3, 1], [5, 1], [3, 3], [5, 3]]) g.fillRect(x, y, 1, 1);
-      this.textures.addCanvas(key, c);
-    }
-    return key;
   }
 }

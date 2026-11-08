@@ -91,9 +91,9 @@
   top: var(--safe-t);
   right: var(--safe-r);
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
+  flex-direction: row; /* currencies, then news / mail / settings - one row along the top */
+  align-items: center;
+  gap: 12px;
 }
 
 .hud-right {
@@ -236,7 +236,7 @@
   color: var(--ui-green);
 }
 
-/* currencies */
+/* currencies: a pill each - icon, amount, top-up button */
 .wallet {
   display: flex;
   gap: 8px;
@@ -246,33 +246,42 @@
   --px: 3px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 30px;
-  padding: 0 4px 0 2px;
-  background: rgba(4, 16, 20, 0.78);
-  box-shadow: inset 0 0 0 1px rgba(240, 207, 116, 0.35);
-  min-width: 108px;
+  gap: 6px;
+  height: 34px;
+  padding: 0 5px 0 6px;
+  min-width: 124px;
+  background: linear-gradient(180deg, rgba(20, 52, 58, 0.94), rgba(6, 20, 24, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(240, 207, 116, 0.6), inset 0 2px 0 rgba(255, 255, 255, 0.07);
 }
 .coin .px-icon {
-  margin-left: -8px;
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6));
 }
 .coin .v {
   flex: 1;
   text-align: right;
   font-size: 14px;
-  padding-right: 2px;
+  line-height: 1;
+  text-shadow: 0 1px 0 #000;
+  white-space: nowrap;
 }
 .coin .plus {
   --px: 2px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border: 0;
-  background: linear-gradient(180deg, #7ef2b8, #23a86a);
-  color: #06301c;
+  background: linear-gradient(180deg, #8af5c2, #2bb374 60%, #17804f);
+  color: #05301b;
   font-weight: 800;
-  line-height: 20px;
+  font-size: 15px;
+  line-height: 22px;
   padding: 0;
   cursor: pointer;
+  flex: none;
+}
+.coin .plus:hover {
+  filter: brightness(1.1);
 }
 .coin .plus:active {
   transform: scale(0.9);
@@ -1084,17 +1093,27 @@
   }
   .coin {
     min-width: 0;
-    height: 26px;
+    height: 30px;
+    gap: 4px;
+    padding: 0 4px;
   }
   .coin .px-icon {
-    width: 26px;
-    height: 26px;
+    width: 20px;
+    height: 20px;
   }
   .coin .v {
-    font-size: 12px;
+    font-size: 12.5px;
+  }
+  .coin .plus {
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
   }
   .wallet {
-    gap: 4px;
+    gap: 5px;
+  }
+  .hud-top-right {
+    gap: 8px;
   }
   .hud-right .btn-ico .tile {
     width: 44px;
@@ -1149,6 +1168,7 @@
 @media (max-width: 560px) {
   .hud-top-right {
     left: var(--safe-l);
+    flex-direction: column;
     align-items: stretch;
     top: calc(var(--safe-t) + 74px);
   }
