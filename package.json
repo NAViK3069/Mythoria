@@ -10,5 +10,9 @@
   "engines": {
     "node": ">=20"
   },
-  "scripts": {}
+  "scripts": {
+    "dev": "npm run dev -w @mythoria/client",
+    "build": "npm run build -w @mythoria/client",
+    "preview": "npm run preview -w @mythoria/client"
+  }
 }

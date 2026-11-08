@@ -1,0 +1,76 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1d2b1f;
+  color: #f4f1e8;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+}
+
+#game canvas {
+  image-rendering: pixelated;
+  display: block;
+}
+
+#hud {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  pointer-events: none;
+  text-shadow: 0 1px 0 #000, 0 0 4px #000;
+}
+
+#hud .title {
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-size: 16px;
+}
+
+#hud .hint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Virtual joystick: appears where the finger/mouse first pressed and is dragged. */
+#stick {
+  position: fixed;
+  width: 96px;
+  height: 96px;
+  margin: -48px 0 0 -48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+#stick[hidden] {
+  display: none;
+}
+
+#stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  border: 2px solid rgba(0, 0, 0, 0.35);
+}
