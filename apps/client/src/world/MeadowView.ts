@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { makeCanvas, rng } from '../art/pixel';
+import { Ponds } from './Ponds';
 import { COLS, ROWS, T, TILE, vertexAt, type MeadowMap, type Placed } from './meadowMap';
 
 interface TileTable {
@@ -28,8 +29,10 @@ export class MeadowView {
 
   constructor(private readonly scene: Phaser.Scene, private readonly map: MeadowMap) {
     const lookup = scene.cache.json.get('tiles') as TileLookup;
-    scene.textures.addCanvas('ground', this.bakeGround(lookup));
+    const ground = this.bakeGround(lookup);
+    scene.textures.addCanvas('ground', ground);
     scene.add.image(0, 0, 'ground').setOrigin(0, 0).setDepth(0);
+    this.ponds = new Ponds(scene, map, ground);
     const [cast, contact] = this.bakeShadows();
     scene.textures.addCanvas('shadows', cast);
     scene.add.image(0, 0, 'shadows').setOrigin(0, 0).setDepth(1).setAlpha(0.26);
@@ -42,9 +45,13 @@ export class MeadowView {
     scene.textures.addCanvas('sunlight', sun)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
     this.sun = scene.add.image(0, 0, 'sunlight').setOrigin(0, 0).setScale(LIGHT_RES).setDepth(1.3).setBlendMode(Phaser.BlendModes.ADD);
     this.placeObjects();
+    this.ponds.adoptLilies(this.lilies);
   }
 
   private readonly sun: Phaser.GameObjects.Image;
+  private readonly ponds: Ponds;
+  private readonly bushes: { data: Placed; image: Phaser.GameObjects.Image; w: number; h: number; shake: number; inside: boolean; seed: number }[] = [];
+  private bushTime = 0;
 
   /** Low-resolution light maps (one texel = LIGHT_RES px), smoothed when drawn. */
   private bakeLight(): [HTMLCanvasElement, HTMLCanvasElement] {
@@ -192,6 +199,9 @@ export class MeadowView {
         continue;
       }
       img.setDepth(o.y);
+      if (o.kind === 'bush') {
+        this.bushes.push({ data: o, image: img, w: img.width, h: img.height, shake: 0, inside: false, seed: Math.random() * 10 });
+      }
       if (o.kind === 'tree' || o.kind === 'wall' || o.kind === 'pillar') {
         this.things.push({ data: o, image: img, bounds: img.getBounds() });
       }
@@ -207,10 +217,51 @@ export class MeadowView {
     }
     // the sunlight breathes very slowly, as if thin cloud were passing
     this.sun.setAlpha(0.85 + Math.sin(time * 0.35) * 0.15);
-    // lily pads bob gently
-    for (let i = 0; i < this.lilies.length; i++) {
-      const l = this.lilies[i];
-      l.setRotation(Math.sin(time * 0.6 + i * 1.7) * 0.06);
+    this.ponds.update(dt);
+    this.updateBushes(dt, px, py);
+  }
+
+  /** Bushes you walk through rustle: they shiver, settle, and shed a leaf or two. */
+  private updateBushes(dt: number, px: number, py: number): void {
+    this.bushTime += dt;
+    for (const b of this.bushes) {
+      const inside = Math.abs(px - b.data.x) < b.w * 0.42 && py < b.data.y + 3 && py > b.data.y - b.h * 0.55;
+      if (!inside && !b.inside && b.shake === 0) continue;
+      if (inside && !b.inside) {
+        b.shake = 1;
+        this.leaves(b.data.x, b.data.y - b.h * 0.6, b.w);
+      }
+      if (inside && this.moving) b.shake = Math.max(b.shake, 0.55);
+      b.inside = inside;
+      if (b.shake > 0) {
+        b.shake = Math.max(0, b.shake - dt * 1.8);
+        const wob = Math.sin(this.bushTime * 26 + b.seed) * b.shake;
+        b.image.setRotation(wob * 0.07);
+        b.image.setScale(1 + wob * 0.03, 1 - Math.abs(wob) * 0.03);
+      } else if (b.image.rotation !== 0) {
+        b.image.setRotation(0).setScale(1);
+      }
+    }
+  }
+
+  /** Set by the scene each frame: is the player walking? */
+  moving = false;
+
+  private leaves(x: number, y: number, w: number): void {
+    for (let i = 0; i < 3; i++) {
+      const leaf = this.scene.add
+        .rectangle(x + (Math.random() - 0.5) * w * 0.6, y + Math.random() * 4, 2, 1, Math.random() < 0.5 ? 0x3f8a34 : 0x6fbf4a)
+        .setDepth(y + 40);
+      this.scene.tweens.add({
+        targets: leaf,
+        x: leaf.x + (Math.random() - 0.5) * 14,
+        y: leaf.y + 10 + Math.random() * 8,
+        angle: (Math.random() - 0.5) * 360,
+        alpha: 0,
+        duration: 700 + Math.random() * 500,
+        ease: 'Sine.easeIn',
+        onComplete: () => leaf.destroy(),
+      });
     }
   }
 }

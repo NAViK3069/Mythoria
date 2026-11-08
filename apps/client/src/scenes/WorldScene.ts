@@ -26,7 +26,8 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     this.map = buildMeadow(this.shapeReader());
-    this.feet = this.map.objects.flatMap((o) => (o.foot ? [o.foot] : []));
+    // Bushes are soft: you walk through them (they rustle), like mushrooms and flowers.
+    this.feet = this.map.objects.flatMap((o) => (o.foot && o.kind !== 'bush' ? [o.foot] : []));
     this.view = new MeadowView(this, this.map);
 
     this.master = new MasterCharacter(this, this.map.spawn.x, this.map.spawn.y);
@@ -133,6 +134,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.controls.target && Math.hypot(m.vx, m.vy) < SPEED * 0.15) this.controls.target = null;
     m.update(dt);
 
+    this.view.moving = Math.hypot(m.vx, m.vy) > 5;
     this.view.update(dt, m.x, m.y, time / 1000);
     this.ambience.update(dt);
   }

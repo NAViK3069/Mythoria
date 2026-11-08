@@ -62,6 +62,9 @@ export interface Shape {
 }
 export type ShapeOf = (frame: string) => Shape;
 
+const ROCKS = Array.from({ length: 12 }, (_, i) => `rock${i}`);
+const BOULDERS = Array.from({ length: 8 }, (_, i) => `boulder${i}`);
+
 const VW = COLS + 1;
 const VH = ROWS + 1;
 
@@ -294,7 +297,7 @@ export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
     const pillar = pick(['pillar1', 'pillar4', 'pillar5', 'pillar6']);
     const px = x + sizeOf(wall).w / 2 + sizeOf(pillar).w / 2 + 4, py = y + 8;
     if (r() < 0.8 && fits(pillar, 'pillar', px, py)) add(pillar, 'pillar', px, py);
-    const rock = pick(['rock0', 'rock4', 'rock5']);
+    const rock = pick(BOULDERS);
     const rx = x - sizeOf(wall).w / 2 - 8, ry = y + 12;
     if (r() < 0.6 && fits(rock, 'rock', rx, ry)) add(rock, 'rock', rx, ry);
   }
@@ -329,7 +332,8 @@ export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
     }
   };
   scatter(110, Array.from({ length: 12 }, (_, i) => `bush${i}`), 'bush');
-  scatter(34, ['rock0', 'rock1', 'rock2', 'rock3', 'rock4', 'rock5', 'rock6', 'rock7'], 'rock');
+  scatter(26, ROCKS, 'rock');
+  scatter(12, BOULDERS, 'rock');
   scatter(16, ['stump0', 'stump1', 'stump2'], 'prop');
   // mushrooms are walk-through: no footprint
   for (let i = 0, tries = 0; i < 26 && tries < 3000; tries++) {
@@ -343,16 +347,18 @@ export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
   for (let i = 0, tries = 0; i < 22 && tries < 4000; tries++) {
     const x = r() * W, y = r() * H;
     if (terrainAt(x, y) === T.Water || !near(Math.round(x / TILE), Math.round(y / TILE), T.Water, 1)) continue;
-    const f = pick(['rock4', 'rock5', 'rock6', 'rock7', 'rock0']);
+    const f = pick(ROCKS);
     if (!fits(f, 'rock', x, y)) continue;
     add(f, 'rock', x, y);
     i++;
   }
 
   // lily pads: on open water only
+  const lilyN = noise2(13);
   for (let y = 1; y < ROWS; y++) {
     for (let x = 1; x < COLS; x++) {
-      if (at(x, y) !== T.Water || r() > 0.2) continue;
+      // lilies gather in a few drifts, not a carpet
+      if (at(x, y) !== T.Water || lilyN(x / 4, y / 4) < 0.58 || r() > 0.35) continue;
       let open = true;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (at(x + dx, y + dy) !== T.Water) open = false;
       if (open) objects.push({ frame: `lily${Math.floor(r() * 5)}`, x: x * TILE + (r() - 0.5) * 8, y: y * TILE + (r() - 0.5) * 8, kind: 'lily' });
