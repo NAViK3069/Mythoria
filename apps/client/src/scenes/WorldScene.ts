@@ -3,12 +3,12 @@ import { Controls } from '../input/Controls';
 import { Ambience } from '../world/Ambience';
 import { MasterCharacter } from '../world/MasterCharacter';
 import { MeadowView } from '../world/MeadowView';
-import { buildMeadow, COLS, ROWS, TILE, waterAt, type Footprint, type MeadowMap } from '../world/meadowMap';
+import { buildMeadow, COLS, ROWS, TILE, waterAt, type Footprint, type MeadowMap, type Shape, type ShapeOf } from '../world/meadowMap';
 
 const SPEED = 62; // px/s
-/** The player's own footprint: an ellipse round the feet. */
-const FOOT_RX = 4.5;
-const FOOT_RY = 2.5;
+/** The player's own footprint: an ellipse under the body, as wide as the body (13 px). */
+const FOOT_RX = 6;
+const FOOT_RY = 3;
 
 /** The world map: walk the master character round the meadow. */
 export class WorldScene extends Phaser.Scene {
@@ -25,11 +25,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    const atlas = this.textures.get('meadow');
-    this.map = buildMeadow((frame) => {
-      const f = atlas.get(frame);
-      return { w: f.cutWidth, h: f.cutHeight };
-    });
+    this.map = buildMeadow(this.shapeReader());
     this.feet = this.map.objects.flatMap((o) => (o.foot ? [o.foot] : []));
     this.view = new MeadowView(this, this.map);
 
@@ -51,6 +47,48 @@ export class WorldScene extends Phaser.Scene {
     cam.startFollow(this.master.root, false, 0.12, 0.12);
     this.fitZoom();
     this.scale.on('resize', () => this.fitZoom());
+  }
+
+  /** Reads the atlas pixels once so footprints can follow each picture's solid base. */
+  private shapeReader(): ShapeOf {
+    const atlas = this.textures.get('meadow');
+    const img = atlas.getSourceImage() as HTMLImageElement;
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const g = c.getContext('2d', { willReadFrequently: true })!;
+    g.drawImage(img, 0, 0);
+    const alpha = g.getImageData(0, 0, c.width, c.height).data;
+    const cache = new Map<string, Shape>();
+    return (frame) => {
+      let s = cache.get(frame);
+      if (s) return s;
+      const f = atlas.get(frame);
+      const { cutX: fx, cutY: fy, cutWidth: w, cutHeight: h } = f;
+      const spans = new Map<number, [number, number]>();
+      s = {
+        w,
+        h,
+        span(rows: number) {
+          const k = Math.max(1, Math.min(h, Math.round(rows)));
+          let r = spans.get(k);
+          if (!r) {
+            let l = w, rr = -1;
+            for (let y = h - k; y < h; y++)
+              for (let x = 0; x < w; x++)
+                if (alpha[((fy + y) * c.width + fx + x) * 4 + 3] > 100) {
+                  if (x < l) l = x;
+                  if (x > rr) rr = x;
+                }
+            r = rr < 0 ? [-2, 2] : [l - w / 2, rr + 1 - w / 2];
+            spans.set(k, r);
+          }
+          return r;
+        },
+      };
+      cache.set(frame, s);
+      return s;
+    };
   }
 
   /**
@@ -112,18 +150,20 @@ export class WorldScene extends Phaser.Scene {
     }
     for (let pass = 0; pass < 2; pass++) {
       for (const f of this.feet) {
-        // Nearest point of the footprint's core (a point, or a flat segment for walls);
-        // the feet and the footprint touch on the ellipse ring round it.
-        const hl = f.hl ?? 0;
-        const cx = Phaser.Math.Clamp(m.x, f.x - hl, f.x + hl);
-        const a = f.rx + FOOT_RX;
-        const b = f.ry + FOOT_RY;
+        // Nearest point of the footprint's inner rectangle; the feet touch it on the
+        // rounded ring round that rectangle (corner radius + the feet's own size).
+        const ix = f.hw - f.r;
+        const iy = f.hd - f.r;
+        const cx = Phaser.Math.Clamp(m.x, f.x - ix, f.x + ix);
+        const cy = Phaser.Math.Clamp(m.y, f.y - iy, f.y + iy);
+        const a = f.r + FOOT_RX;
+        const b = f.r + FOOT_RY;
         const ex = (m.x - cx) / a;
-        const ey = (m.y - f.y) / b;
+        const ey = (m.y - cy) / b;
         const d = Math.hypot(ex, ey);
         if (d >= 1) continue;
         const nx = d > 1e-4 ? cx + (ex / d) * a : m.x;
-        const ny = d > 1e-4 ? f.y + (ey / d) * b : f.y + b;
+        const ny = d > 1e-4 ? cy + (ey / d) * b : cy + b;
         if (this.ground(nx, ny)) {
           m.x = nx;
           m.y = ny;

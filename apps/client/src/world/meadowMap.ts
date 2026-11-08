@@ -20,16 +20,16 @@ export type Kind = 'tree' | 'bush' | 'wall' | 'pillar' | 'rock' | 'prop' | 'lily
 
 /**
  * The part of an object that stands on the ground, which you can't walk into:
- * an ellipse (rx, ry), stretched sideways by `hl` into a capsule with a flat
- * front and back - walls - so walking straight at one stops you instead of
- * sliding you round it.
+ * a rectangle (half width hw, half depth hd round x, y) with rounded corners
+ * of radius r. Boxes get small corners (you stop flat against their sides),
+ * trunks and round things big ones (you slide round them).
  */
 export interface Footprint {
   x: number;
   y: number;
-  rx: number;
-  ry: number;
-  hl?: number;
+  hw: number;
+  hd: number;
+  r: number;
 }
 
 export interface Placed {
@@ -53,32 +53,54 @@ export interface MeadowMap {
   butterflies: { x: number; y: number }[];
 }
 
-/** Size of an atlas frame, so footprints and spacing can follow the art. */
-export type SizeOf = (frame: string) => { w: number; h: number };
+/** What the map needs to know about a picture: its size and how wide its solid pixels are near the bottom. */
+export interface Shape {
+  w: number;
+  h: number;
+  /** Left and right edge (px from the picture's centre) of the solid pixels in the bottom `rows` rows. */
+  span(rows: number): [number, number];
+}
+export type ShapeOf = (frame: string) => Shape;
 
 const VW = COLS + 1;
 const VH = ROWS + 1;
 
 /**
- * The ground-contact ellipse of each kind of thing, from its picture's size.
- * Only the base blocks: you can walk "behind" a tree's canopy or the top of a wall.
+ * Where a thing stands on the ground, read from its picture: as wide as the
+ * solid pixels at its base, and as deep as its top face would cover in a
+ * 3/4 view (boxes, barrels and rocks about half their height, walls a slab,
+ * trees just the trunk). A flat-sided capsule, so you stop against its sides.
  */
-export function footprintFor(kind: Kind, x: number, y: number, w: number, h: number): Footprint | undefined {
+export function footprintFor(kind: Kind, x: number, y: number, s?: Shape): Footprint | undefined {
+  if (kind === 'brazier') return { x, y: y - 2.5, hw: 4.5, hd: 2.5, r: 2.5 };
+  if (!s) return undefined;
+  const fp = (l: number, r: number, depth: number, maxW = Infinity, round = 2.5): Footprint => {
+    const hw = Math.min((r - l) / 2, maxW / 2);
+    const hd = depth / 2;
+    return { x: x + (l + r) / 2, y: y - hd, hw, hd, r: Math.min(round, hw, hd) };
+  };
   switch (kind) {
-    case 'tree':
-      return { x, y: y - 3, rx: 5, ry: 3 }; // the trunk
-    case 'wall':
-      return { x, y: y - 5, rx: 5, ry: 5, hl: Math.max(0, w * 0.44 - 5) };
-    case 'pillar':
-      return { x, y: y - 4, rx: Math.min(8, w * 0.4), ry: 4 };
+    case 'tree': {
+      const [l, r] = s.span(3); // trunk and roots
+      return fp(l, r, 6, 12, 6);
+    }
+    case 'wall': {
+      const [l, r] = s.span(4);
+      return fp(l, r, Math.min(12, s.h * 0.34));
+    }
+    case 'pillar': {
+      const [l, r] = s.span(4);
+      return fp(l, r, Math.min(11, s.h * 0.3));
+    }
     case 'rock':
-      return { x, y: y - h * 0.3, rx: w * 0.42, ry: Math.max(3, h * 0.28) };
-    case 'bush':
-      return { x, y: y - h * 0.25, rx: w * 0.36, ry: Math.max(3, h * 0.2) };
-    case 'prop':
-      return { x, y: y - 3.5, rx: w * 0.4, ry: 3.5 };
-    case 'brazier':
-      return { x, y: y - 2, rx: 4, ry: 2.5 };
+    case 'prop': {
+      const [l, r] = s.span(Math.ceil(s.h * 0.45));
+      return fp(l, r, Math.max(5, s.h * 0.5), Infinity, kind === 'rock' ? 4 : 2);
+    }
+    case 'bush': {
+      const [l, r] = s.span(Math.ceil(s.h * 0.4));
+      return fp(l + 1, r - 1, Math.max(5, s.h * 0.42), Infinity, 5);
+    }
     default:
       return undefined;
   }
@@ -112,7 +134,7 @@ const KX = COLS / 72;
 const KY = ROWS / 52;
 const KR = (KX + KY) / 2;
 
-export function buildMeadow(sizeOf: SizeOf): MeadowMap {
+export function buildMeadow(sizeOf: ShapeOf): MeadowMap {
   const vert = new Uint8Array(VW * VH);
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= VW || y >= VH ? T.Grass : vert[y * VW + x]);
   const set = (x: number, y: number, t: T) => {
@@ -162,6 +184,24 @@ export function buildMeadow(sizeOf: SizeOf): MeadowMap {
     }
   }
 
+  // tiny patches (a corner or two) draw as ragged stains: keep only real areas of dark grass
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < VH; y++) {
+      for (let x = 0; x < VW; x++) {
+        if (at(x, y) !== T.Dark) continue;
+        const n = [at(x + 1, y), at(x - 1, y), at(x, y + 1), at(x, y - 1)].filter((t) => t === T.Dark).length;
+        if (n < 3) set(x, y, T.Grass);
+      }
+    }
+  }
+  for (let y = 0; y < VH; y++) {
+    for (let x = 0; x < VW; x++) {
+      if (at(x, y) !== T.Grass || near(x, y, T.Water, 2) || near(x, y, T.Path, 2)) continue;
+      const n = [at(x + 1, y), at(x - 1, y), at(x, y + 1), at(x, y - 1)].filter((t) => t === T.Dark).length;
+      if (n >= 3) set(x, y, T.Dark); // fill pinholes
+    }
+  }
+
   // --- each tile can show only grass + ONE other terrain: clear any clashes
   for (let pass = 0; pass < 3; pass++) {
     for (let y = 0; y < ROWS; y++) {
@@ -191,6 +231,19 @@ export function buildMeadow(sizeOf: SizeOf): MeadowMap {
       const t = terrainAt(x + dx, y + dy);
       if (t === T.Water || t === T.Path) return false;
     }
+    // Blocking things leave a gap the player can really walk through - never a sliver
+    // they half squeeze into.
+    const foot = footprintFor(kind, x, y, sizeOf(frame));
+    if (foot) {
+      for (const o of objects) {
+        const f = o.foot;
+        if (!f) continue;
+        const gx = Math.abs(f.x - foot.x) - (f.hw + foot.hw);
+        const gy = Math.abs(f.y - foot.y) - (f.hd + foot.hd);
+        // scattered things keep a walkable gap; hand-placed clusters (camp, shrine) are allowed to touch
+        if (Math.max(gx, gy) < 16) return false;
+      }
+    }
     const me = room({ frame, kind });
     const myH = sizeOf(frame).h;
     const myW = sizeOf(frame).w;
@@ -215,8 +268,7 @@ export function buildMeadow(sizeOf: SizeOf): MeadowMap {
     });
   };
   const add = (frame: string, kind: Kind, x: number, y: number, shadow = true) => {
-    const { w, h } = frame ? sizeOf(frame) : { w: 8, h: 8 };
-    objects.push({ frame, kind, x, y, shadow, foot: footprintFor(kind, x, y, w, h) });
+    objects.push({ frame, kind, x, y, shadow, foot: footprintFor(kind, x, y, frame ? sizeOf(frame) : undefined) });
   };
   const sx = Math.round(spawnT.x) * TILE, sy = Math.round(spawnT.y) * TILE;
 
@@ -249,7 +301,7 @@ export function buildMeadow(sizeOf: SizeOf): MeadowMap {
 
   // camp props by the clearing
   const camp: [string, Kind, number, number][] = [
-    ['barrel0', 'prop', -58, -34], ['barrel1', 'prop', -44, -40], ['crate0', 'prop', -64, -16],
+    ['barrel0', 'prop', -56, -34], ['barrel1', 'prop', -42, -38], ['crate0', 'prop', -62, -24],
   ];
   for (const [f, k, dx, dy] of camp) add(f, k, sx + dx, sy + dy);
   add('chest0', 'prop', Math.round(23 * KX) * TILE, Math.round(31 * KY) * TILE);

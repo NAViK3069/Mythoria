@@ -14,9 +14,6 @@ export interface StandingThing {
   bounds: Phaser.Geom.Rectangle;
 }
 
-/** Sun from the upper left: shadows fall down and to the right. */
-const SHADOW_SKEW = 0.55;
-const SHADOW_SQUASH = 0.42;
 /** World px per texel of the light maps. */
 const LIGHT_RES = 4;
 
@@ -33,8 +30,11 @@ export class MeadowView {
     const lookup = scene.cache.json.get('tiles') as TileLookup;
     scene.textures.addCanvas('ground', this.bakeGround(lookup));
     scene.add.image(0, 0, 'ground').setOrigin(0, 0).setDepth(0);
-    scene.textures.addCanvas('shadows', this.bakeShadows());
-    scene.add.image(0, 0, 'shadows').setOrigin(0, 0).setDepth(1).setAlpha(0.3);
+    const [cast, contact] = this.bakeShadows();
+    scene.textures.addCanvas('shadows', cast);
+    scene.add.image(0, 0, 'shadows').setOrigin(0, 0).setDepth(1).setAlpha(0.26);
+    scene.textures.addCanvas('contact', contact);
+    scene.add.image(0, 0, 'contact').setOrigin(0, 0).setDepth(1.1).setAlpha(0.22);
     // Light that belongs to the level: shade under the woods, warm sun pooling in the clearings.
     const [shade, sun] = this.bakeLight();
     scene.textures.addCanvas('shade', shade)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
@@ -120,9 +120,19 @@ export class MeadowView {
     return c;
   }
 
-  /** Each object's silhouette, flattened and slanted away from the sun, baked into one texture. */
-  private bakeShadows(): HTMLCanvasElement {
-    const [c, g] = makeCanvas(COLS * TILE, ROWS * TILE);
+  /**
+   * Shadows for a sun high overhead, a little to the upper left: each thing's own
+   * outline squashed flat onto the ground beneath it and nudged down-right, so what
+   * peeks out round its base is a soft shape that matches it (a round bush gets a
+   * round shadow, a tree a canopy-shaped pool). Plus a darker contact patch where
+   * it meets the ground. Both are crisp pixel shapes; overlapping shadows merge.
+   */
+  private bakeShadows(): [HTMLCanvasElement, HTMLCanvasElement] {
+    const W = COLS * TILE, H = ROWS * TILE;
+    const [cast, cg] = makeCanvas(W, H);
+    const [contact, kg] = makeCanvas(W, H);
+    cg.imageSmoothingEnabled = true;
+    kg.imageSmoothingEnabled = true;
     const sil = new Map<string, HTMLCanvasElement>();
     const silhouette = (name: string) => {
       let s = sil.get(name);
@@ -131,21 +141,45 @@ export class MeadowView {
         const [sc, sg] = makeCanvas(f.cutWidth, f.cutHeight);
         sg.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, 0, 0, f.cutWidth, f.cutHeight);
         sg.globalCompositeOperation = 'source-in';
-        sg.fillStyle = '#0c1d14';
+        sg.fillStyle = '#000000';
         sg.fillRect(0, 0, f.cutWidth, f.cutHeight);
         sil.set(name, (s = sc));
       }
       return s;
     };
+    const SQUASH: Partial<Record<Placed['kind'], number>> = { tree: 0.34, bush: 0.42, wall: 0.42, pillar: 0.32, rock: 0.48, prop: 0.45, decal: 0.45 };
+    cg.fillStyle = '#000000';
+    kg.fillStyle = '#000000';
     for (const o of this.map.objects) {
-      if (!o.shadow || !o.frame) continue;
-      const s = silhouette(o.frame);
-      // flip the silhouette down from the base, squash it and lean it to the right
-      g.setTransform(1, 0, -SHADOW_SKEW * SHADOW_SQUASH, -SHADOW_SQUASH, Math.round(o.x), Math.round(o.y) - 1);
-      g.drawImage(s, -s.width / 2, -s.height);
+      if (!o.frame || o.kind === 'lily') continue;
+      if (o.shadow) {
+        const s = silhouette(o.frame);
+        const sh = Math.max(3, Math.round(s.height * (SQUASH[o.kind] ?? 0.42)));
+        const sw = s.width + 2;
+        const dx = Math.round(s.height * 0.07) + 1;
+        const dy = Math.round(sh * 0.3);
+        cg.drawImage(s, Math.round(o.x - sw / 2 + dx), Math.round(o.y - sh + dy), sw, sh);
+      }
+      const f = o.foot;
+      if (f) {
+        kg.beginPath();
+        kg.ellipse(f.x + 1, f.y + f.hd * 0.45, f.hw + 1.5, f.hd + 1, 0, 0, Math.PI * 2);
+        kg.fill();
+      }
     }
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    return c;
+    // keep them crisp: every pixel either in shadow or not
+    for (const [canvas, g] of [[cast, cg], [contact, kg]] as const) {
+      const img = g.getImageData(0, 0, canvas.width, canvas.height);
+      const d = img.data;
+      for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 110 ? 255 : 0;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = 12;
+        d[i + 1] = 30;
+        d[i + 2] = 22;
+      }
+      g.putImageData(img, 0, 0);
+    }
+    return [cast, contact];
   }
 
   private placeObjects(): void {
