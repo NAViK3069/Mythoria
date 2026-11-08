@@ -1,25 +1,20 @@
 import * as Phaser from 'phaser';
-import { bushCanvas, groundCanvas, rockCanvas, treeCanvas } from '../art/props';
-import { rng } from '../art/pixel';
 import { Controls } from '../input/Controls';
+import { Ambience } from '../world/Ambience';
 import { MasterCharacter } from '../world/MasterCharacter';
+import { MeadowView } from '../world/MeadowView';
+import { buildMeadow, COLS, ROWS, TILE, waterAt, type MeadowMap } from '../world/meadowMap';
 
-const WORLD_W = 960;
-const WORLD_H = 640;
-const SPEED = 60; // px/s
+const SPEED = 62; // px/s
 const PLAYER_R = 4; // collision radius at the feet
 
-interface Blocker {
-  x: number;
-  y: number;
-  r: number;
-}
-
-/** Test map: walk the master character around a small meadow. */
+/** The world map: walk the master character round the meadow. */
 export class WorldScene extends Phaser.Scene {
+  private map!: MeadowMap;
+  private view!: MeadowView;
+  private ambience!: Ambience;
   private master!: MasterCharacter;
   private controls!: Controls;
-  private blockers: Blocker[] = [];
   private marker!: Phaser.GameObjects.Image;
 
   constructor() {
@@ -27,14 +22,14 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    const path = (x: number) => WORLD_H / 2 + Math.sin(x / 140) * 60 + Math.sin(x / 47) * 10;
-    this.textures.addCanvas('ground', groundCanvas(WORLD_W, WORLD_H, path));
-    this.add.image(0, 0, 'ground').setOrigin(0, 0).setDepth(0);
-    this.makeProps(path);
+    this.map = buildMeadow();
+    this.view = new MeadowView(this, this.map);
 
-    this.master = new MasterCharacter(this, 120, path(120));
+    this.master = new MasterCharacter(this, this.map.spawn.x, this.map.spawn.y);
     this.master.walkSpeed = SPEED;
     this.master.onStep = (x, y) => this.dust(x, y);
+
+    this.ambience = new Ambience(this, this.map);
 
     this.marker = this.add.image(0, 0, this.markerTexture()).setDepth(2).setVisible(false);
     this.controls = new Controls(this);
@@ -43,21 +38,21 @@ export class WorldScene extends Phaser.Scene {
     };
 
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, WORLD_W, WORLD_H);
-    cam.startFollow(this.master.root, true, 0.15, 0.15);
-    cam.setRoundPixels(true);
+    cam.setBounds(0, 0, COLS * TILE, ROWS * TILE);
+    cam.setRoundPixels(false);
+    cam.startFollow(this.master.root, false, 0.12, 0.12);
     this.fitZoom();
     this.scale.on('resize', () => this.fitZoom());
   }
 
-  /** Whole-number zoom so pixels stay square: bigger on large screens, at least 2x. */
+  /** Whole-number zoom so pixels stay square; about 400 world px across the long side of the screen. */
   private fitZoom(): void {
     const { width, height } = this.scale.gameSize;
-    const zoom = Phaser.Math.Clamp(Math.round(Math.min(width, height) / 130), 2, 4);
+    const zoom = Phaser.Math.Clamp(Math.round(Math.max(width, height) / 420), 2, 6);
     this.cameras.main.setZoom(zoom);
   }
 
-  update(_time: number, deltaMs: number): void {
+  update(time: number, deltaMs: number): void {
     const dt = Math.min(0.05, deltaMs / 1000);
     this.controls.update();
     const m = this.master;
@@ -80,66 +75,53 @@ export class WorldScene extends Phaser.Scene {
 
     const ox = m.x;
     const oy = m.y;
-    m.x += dx * SPEED * dt;
-    m.y += dy * SPEED * dt;
-    this.collide(m);
+    this.moveWithSlide(m, dx * SPEED * dt, dy * SPEED * dt);
     m.vx = (m.x - ox) / dt;
     m.vy = (m.y - oy) / dt;
-    // Walking into a wall towards a tap target: give up instead of pushing forever.
+    // Walking into something on the way to a tap target: give up instead of pushing forever.
     if (this.controls.target && Math.hypot(m.vx, m.vy) < SPEED * 0.15) this.controls.target = null;
     m.update(dt);
+
+    this.view.update(dt, m.x, m.y, time / 1000);
+    this.ambience.update(dt);
   }
 
-  private collide(m: MasterCharacter): void {
-    for (const b of this.blockers) {
+  /** Move, sliding along walls and pond banks instead of stopping dead. */
+  private moveWithSlide(m: MasterCharacter, mx: number, my: number): void {
+    if (this.free(m.x + mx, m.y + my)) {
+      m.x += mx;
+      m.y += my;
+    } else if (this.free(m.x + mx, m.y)) {
+      m.x += mx;
+    } else if (this.free(m.x, m.y + my)) {
+      m.y += my;
+    }
+    this.pushOut(m);
+  }
+
+  private free(x: number, y: number): boolean {
+    if (x < 8 || y < 12 || x > COLS * TILE - 8 || y > ROWS * TILE - 4) return false;
+    return waterAt(this.map, x, y) < 0.45;
+  }
+
+  /** Round blockers (trees, rocks, walls) push the feet out smoothly. */
+  private pushOut(m: MasterCharacter): void {
+    for (const b of this.map.objects) {
+      if (!b.r) continue;
       const dx = m.x - b.x;
-      const dy = m.y - b.y;
+      const dy = m.y - (b.y - 2);
       const min = b.r + PLAYER_R;
       const d2 = dx * dx + dy * dy;
       if (d2 < min * min) {
         const d = Math.sqrt(d2) || 0.001;
-        m.x = b.x + (dx / d) * min;
-        m.y = b.y + (dy / d) * min;
+        const nx = b.x + (dx / d) * min;
+        const ny = b.y - 2 + (dy / d) * min;
+        if (this.free(nx, ny)) {
+          m.x = nx;
+          m.y = ny;
+        }
       }
     }
-    m.x = Phaser.Math.Clamp(m.x, 8, WORLD_W - 8);
-    m.y = Phaser.Math.Clamp(m.y, 12, WORLD_H - 4);
-  }
-
-  private makeProps(path: (x: number) => number): void {
-    const r = rng(42);
-    for (let i = 0; i < 6; i++) this.textures.addCanvas(`tree${i}`, treeCanvas(100 + i));
-    for (let i = 0; i < 3; i++) this.textures.addCanvas(`bush${i}`, bushCanvas(200 + i));
-    this.textures.addCanvas('rock', rockCanvas());
-
-    const free = (x: number, y: number, gap: number) =>
-      Math.abs(y - path(x)) > 22 && this.blockers.every((b) => Math.hypot(b.x - x, b.y - y) > b.r + gap);
-    const place = (key: string, x: number, y: number, r0: number) => {
-      // origin at the bottom centre = where it stands
-      this.add.image(Math.round(x), Math.round(y), key).setOrigin(0.5, 1).setDepth(Math.round(y));
-      this.blockers.push({ x, y: y - 2, r: r0 });
-    };
-
-    // a ring of trees round the edge
-    for (let x = 0; x <= WORLD_W; x += 22) {
-      for (const y of [18, WORLD_H + 6]) if (free(x, y, 4) || Math.abs(y - path(x)) > 22) place(`tree${Math.floor(r() * 6)}`, x + r() * 6, y, 6);
-    }
-    for (let y = 40; y < WORLD_H; y += 24) {
-      for (const x of [6, WORLD_W - 6]) if (free(x, y, 4)) place(`tree${Math.floor(r() * 6)}`, x, y + r() * 6, 6);
-    }
-    // scattered trees, bushes and rocks
-    const scatter = (n: number, key: () => string, rad: number, gap: number) => {
-      for (let i = 0, tries = 0; i < n && tries < n * 30; tries++) {
-        const x = 40 + r() * (WORLD_W - 80);
-        const y = 50 + r() * (WORLD_H - 90);
-        if (!free(x, y, gap) || Math.hypot(x - 120, y - path(120)) < 50) continue;
-        place(key(), x, y, rad);
-        i++;
-      }
-    };
-    scatter(38, () => `tree${Math.floor(r() * 6)}`, 6, 22);
-    scatter(30, () => `bush${Math.floor(r() * 3)}`, 6, 12);
-    scatter(22, () => 'rock', 5, 10);
   }
 
   /** A little puff of dust where a foot lands. */
@@ -147,14 +129,15 @@ export class WorldScene extends Phaser.Scene {
     const behind = -this.master.facing * 3;
     for (let i = 0; i < 2; i++) {
       const p = this.add
-        .rectangle(Math.round(x + behind + (i ? 2 : -1)), Math.round(y - 1), 2, 2, 0xd8cfb4, 0.8)
+        .rectangle(x + behind + (i ? 2 : -1), y - 1, 2, 2, 0xe6dcc0, 0.7)
         .setDepth(y - 0.5);
       this.tweens.add({
         targets: p,
         y: p.y - 3,
         x: p.x + behind,
         alpha: 0,
-        duration: 320,
+        scale: 0.4,
+        duration: 380,
         ease: 'Quad.easeOut',
         onComplete: () => p.destroy(),
       });

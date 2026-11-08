@@ -12,7 +12,10 @@
 - [x] ตั้ง Vite + Phaser + TypeScript ใน `apps/client`
 - [x] GitHub Actions deploy ขึ้น GitHub Pages อัตโนมัติ (ต้องเปิด Pages ใน Settings ก่อน)
 - [x] ตัวละครมาสเตอร์ (หัว/ตัว/ขา + มือลอย) เดินได้ หันซ้าย/ขวา (joystick บนจอ / คลิก / WASD), กล้องตาม, depth sorting
-- [ ] World Scene: เปลี่ยนแมพทดสอบเป็นแมพ Tiled จริง
+- [x] แมพทุ่งหญ้าแรก: tileset จาก PixelLab (autotile), บ่อน้ำ, ทางดิน, ซากศาลเจ้า, ป่ารอบขอบ, ชนน้ำ/ต้นไม้/กำแพงได้
+- [x] แสงและบรรยากาศ: เงาทอด, เงาเมฆ, god rays, ประกายน้ำ, ละออง, ไฟกระถาง, เอฟเฟกต์ pixelfx
+- [x] ตัวละครขยับลื่น (สปริง) + มือลอย 8 ท่า
+- [ ] เครื่องมือวาง/แก้แมพ (ตอนนี้แมพสร้างจากโค้ด `meadowMap.ts`)
 - [ ] Encounter: ชนศัตรูบนแมพ → เปลี่ยนฉากเข้า Battle
 - [ ] `packages/combat`: turn order ตาม Speed, โจมตีปกติ/สกิล/อัลติ, ชนะ/แพ้ + unit test
 - [ ] Battle Scene: แสดงทีมเรา vs ศัตรู, เลือกเป้าหมาย, แอนิเมชันพื้นฐาน

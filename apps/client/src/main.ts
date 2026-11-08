@@ -8,7 +8,9 @@ const game = new Phaser.Game({
   parent: 'game',
   backgroundColor: '#1d2b1f',
   pixelArt: true,
-  roundPixels: true,
+  // Off: parts move by fractions of a pixel for smooth animation (each zoomed pixel is several screen pixels).
+  roundPixels: false,
+  fps: { target: 60, smoothStep: true },
   scale: {
     mode: Phaser.Scale.RESIZE,
     width: window.innerWidth,
