@@ -5,6 +5,12 @@ Phaser 4 - https://phaser.io
 Copyright (c) 2026 Phaser Studio Inc. - MIT License
 
 ----------------------------------------------------------------------
+Kanit font - https://fonts.google.com/specimen/Kanit
+Copyright 2020 The Kanit Project Authors (https://github.com/cadsondemak/kanit)
+SIL Open Font License, Version 1.1 - https://openfontlicense.org
+(bundled via @fontsource/kanit)
+
+----------------------------------------------------------------------
 pixelfx - https://github.com/patch-gg/pixelfx
 MIT License
 
