@@ -5,11 +5,11 @@ import { COLS, ROWS, T, TILE, vertexAt, waterAt, type MeadowMap } from './meadow
 /** How often the water surface is redrawn - with continuous time, 30 fps like pixelfx. */
 const WATER_FPS = 30;
 
-const SHALLOW = [0x6c, 0xc4, 0xd8];
-const MID = [0x3a, 0x96, 0xca];
-const DEEP = [0x25, 0x62, 0xa0];
-const CREST = [0xe0, 0xf7, 0xff];
-const FOAM = [0xee, 0xfa, 0xff];
+const SHALLOW = [0x52, 0xe0, 0xd0]; // glowing turquoise near the shore
+const MID = [0x22, 0x9e, 0xcc];
+const DEEP = [0x16, 0x4a, 0xa8]; // deep blue in the middle
+const CREST = [0xc4, 0xff, 0xf4];
+const FOAM = [0xd6, 0xff, 0xf2];
 
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 const pack = (r: number, g: number, b: number) => (255 << 24) | (Math.round(b) << 16) | (Math.round(g) << 8) | Math.round(r);

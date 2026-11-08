@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { makeCanvas, rng } from '../art/pixel';
+import { gradeCanvas } from '../art/grade';
 import { Ponds } from './Ponds';
 import { COLS, ROWS, T, TILE, vertexAt, type MeadowMap, type Placed } from './meadowMap';
 
@@ -29,7 +30,7 @@ export class MeadowView {
 
   constructor(private readonly scene: Phaser.Scene, private readonly map: MeadowMap) {
     const lookup = scene.cache.json.get('tiles') as TileLookup;
-    const ground = this.bakeGround(lookup);
+    const ground = gradeCanvas(this.bakeGround(lookup));
     scene.textures.addCanvas('ground', ground);
     scene.add.image(0, 0, 'ground').setOrigin(0, 0).setDepth(0);
     this.ponds = new Ponds(scene, map, ground);
@@ -84,8 +85,8 @@ export class MeadowView {
       for (let x = 0; x < COLS * TILE; x += 44) {
         const px = x + (r() - 0.5) * 30, py = y + (r() - 0.5) * 30;
         const d = nearestTree(px, py);
-        if (d > 95) blob(ug, px, py, 80, '255,226,150', 0.05);
-        else if (d > 34 && r() < 0.5) blob(ug, px, py, 10 + r() * 8, '255,240,180', 0.16);
+        if (d > 95) blob(ug, px, py, 80, '205,255,215', 0.06);
+        else if (d > 34 && r() < 0.5) blob(ug, px, py, 10 + r() * 8, '225,255,220', 0.15);
       }
     }
     return [shade, sun];

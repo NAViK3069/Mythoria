@@ -5,7 +5,7 @@ import { MasterCharacter } from '../world/MasterCharacter';
 import { MeadowView } from '../world/MeadowView';
 import { buildMeadow, COLS, ROWS, TILE, waterAt, type Footprint, type MeadowMap, type Shape, type ShapeOf } from '../world/meadowMap';
 
-const SPEED = 62; // px/s
+const SPEED = 92; // px/s
 /** The player's own footprint: an ellipse under the body, as wide as the body (13 px). */
 const FOOT_RX = 6;
 const FOOT_RY = 3;

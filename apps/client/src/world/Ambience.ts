@@ -77,8 +77,8 @@ export class Ambience {
 
     // Overall colour: a touch richer. (No screen-space lighting: all light belongs to the level.)
     const grade = scene.cameras.main.filters.internal.addColorMatrix();
-    grade.colorMatrix.saturate(-0.06);
-    grade.colorMatrix.contrast(0.08, true);
+    grade.colorMatrix.saturate(0.08);
+    grade.colorMatrix.contrast(0.1, true);
   }
 
   update(dt: number): void {
