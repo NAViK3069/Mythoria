@@ -1,0 +1,14 @@
+{
+  "name": "mythoria",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Mythoria — Pixel 2.5D turn-based fantasy RPG for the web",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {}
+}
