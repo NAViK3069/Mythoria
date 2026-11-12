@@ -2,6 +2,9 @@
 
 Usage: python tools/build_ui_assets.py <download_dir>
   <download_dir>/icA, icB, icC  - the icon candidates (index.png), one PixelLab job each
+  <download_dir>/emb            - element and race icon candidates (index.png)
+  <download_dir>/cls            - hero class icon candidates (index.png)
+Whatever isn't in <download_dir> is skipped (so one new set can be added on its own).
   <download_dir>/panel.png      - the window frame (PixelLab UI panel "mythoria_panel_v2a":
                                   gold filigree corners, transparent centre); cropped and its
                                   inside filled with dark glass so the 9-slice centre stretches
@@ -25,6 +28,14 @@ ICONS = {
     "event": ("icB", 38), "quest": ("icB", 44), "guild": ("icB", 50), "battle": ("icB", 57),
     "chat": ("icC", 1), "trophy": ("icC", 11), "potion": ("icC", 17), "chest": ("icC", 29),
     "book": ("icC", 33), "medal": ("icC", 45), "map": ("icC", 49), "key": ("icC", 63),
+    # the five elements (round gold-rimmed badges) and the ten races (crests): one 64-candidate job, emb/
+    "el_fire": ("emb", 0), "el_wood": ("emb", 4), "el_water": ("emb", 8), "el_light": ("emb", 12), "el_dark": ("emb", 16),
+    "race_human": ("emb", 23), "race_beastkin": ("emb", 24), "race_spirit": ("emb", 28), "race_celestial": ("emb", 33),
+    "race_demon": ("emb", 38), "race_dragonkin": ("emb", 40), "race_aquatic": ("emb", 44), "race_forest": ("emb", 50),
+    "race_undead": ("emb", 52), "race_automaton": ("emb", 57),
+    # the six hero classes: one 64-candidate job, cls/
+    "cls_tank": ("cls", 5), "cls_warrior": ("cls", 10), "cls_assassin": ("cls", 20),
+    "cls_marksman": ("cls", 30), "cls_mage": ("cls", 42), "cls_support": ("cls", 50),
 }
 
 # key art behind the play-mode cards and banners: name -> picked candidate
@@ -67,14 +78,19 @@ if __name__ == "__main__":
     dl = sys.argv[1]
     for d in (os.path.join(SRC, "icons"), os.path.join(OUT, "icons")):
         os.makedirs(d, exist_ok=True)
+    copied = 0
     for name, (folder, idx) in ICONS.items():
         src = os.path.join(dl, folder, f"{idx}.png")
+        if not os.path.exists(src):
+            continue
+        copied += 1
         for d in (os.path.join(SRC, "icons"), os.path.join(OUT, "icons")):
             shutil.copy(src, os.path.join(d, f"{name}.png"))
     from PIL import Image
-    panel = fill_inside(Image.open(os.path.join(dl, "panel.png")).convert("RGBA"))
-    for d in (SRC, OUT):
-        panel.save(os.path.join(d, "panel.png"), optimize=True)
+    if os.path.exists(os.path.join(dl, "panel.png")):
+        panel = fill_inside(Image.open(os.path.join(dl, "panel.png")).convert("RGBA"))
+        for d in (SRC, OUT):
+            panel.save(os.path.join(d, "panel.png"), optimize=True)
     art_dir = os.path.join(dl, "art")
     if os.path.isdir(art_dir):
         from PIL import Image
@@ -84,4 +100,4 @@ if __name__ == "__main__":
             im = trim_padding(Image.open(os.path.join(art_dir, f"{name}_{idx}.png")).convert("RGBA"))
             for d in (os.path.join(SRC, "art"), os.path.join(OUT, "art")):
                 im.save(os.path.join(d, f"{name}.png"), optimize=True)
-    print(f"{len(ICONS)} icons + panel frame + {len(ART)} key art")
+    print(f"{copied} icons copied")

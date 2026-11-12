@@ -1,6 +1,6 @@
 import type * as Phaser from 'phaser';
 import { makeCanvas } from '../art/pixel';
-import { COLS, ROWS, TILE, type MeadowMap } from './meadowMap';
+import { TILE, type MeadowMap } from './meadowMap';
 
 /** World px per minimap px. */
 export const MINIMAP_SCALE = 4;
@@ -11,8 +11,8 @@ export const MINIMAP_SCALE = 4;
  * sprite (sorted by depth, like the world), then a soft edge.
  */
 export function renderMinimap(scene: Phaser.Scene, map: MeadowMap): HTMLCanvasElement {
-  const W = (COLS * TILE) / MINIMAP_SCALE;
-  const H = (ROWS * TILE) / MINIMAP_SCALE;
+  const W = (map.cols * TILE) / MINIMAP_SCALE;
+  const H = (map.rows * TILE) / MINIMAP_SCALE;
   const [c, g] = makeCanvas(W, H);
   const ground = scene.textures.get('ground').getSourceImage() as CanvasImageSource;
   g.imageSmoothingEnabled = true;
@@ -20,13 +20,17 @@ export function renderMinimap(scene: Phaser.Scene, map: MeadowMap): HTMLCanvasEl
   g.drawImage(ground, 0, 0, W, H);
 
   const shown = map.objects
-    .filter((o) => o.frame && (o.kind === 'tree' || o.kind === 'wall' || o.kind === 'pillar' || o.kind === 'rock' || o.kind === 'bush' || o.kind === 'prop'))
+    .filter((o) => o.frame && (o.kind === 'tree' || o.kind === 'wall' || o.kind === 'pillar' || o.kind === 'rock' || o.kind === 'bush' || o.kind === 'prop' || o.kind === 'house' || o.kind === 'tent' || o.kind === 'post'))
     .sort((a, b) => a.y - b.y);
   for (const o of shown) {
     const f = scene.textures.getFrame('meadow', o.frame);
     const w = f.cutWidth / MINIMAP_SCALE;
     const h = f.cutHeight / MINIMAP_SCALE;
-    g.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, o.x / MINIMAP_SCALE - w / 2, o.y / MINIMAP_SCALE - h, w, h);
+    g.save();
+    g.translate(o.x / MINIMAP_SCALE, 0);
+    if (o.flip) g.scale(-1, 1);
+    g.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, -w / 2, o.y / MINIMAP_SCALE - h, w, h);
+    g.restore();
   }
 
   // lift it a little: the world is graded dark and moody, a map should read at a glance

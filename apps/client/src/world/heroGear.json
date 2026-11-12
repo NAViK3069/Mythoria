@@ -1,0 +1,329 @@
+{
+ "bram": {
+  "front": {
+   "frame": "weapon_bram",
+   "x": 6.5,
+   "y": 42,
+   "w": 14,
+   "h": 50,
+   "over": false,
+   "rest": [
+    11,
+    -9
+   ],
+   "scale": 0.75
+  },
+  "back": {
+   "frame": "offhand_bram",
+   "x": 11.5,
+   "y": 14.5,
+   "w": 24,
+   "h": 30,
+   "over": true,
+   "rest": [
+    -7.5,
+    -8.5
+   ],
+   "scale": 0.75
+  },
+  "skin": {
+   "H": "#f8ede1",
+   "j": "#d4a897",
+   "k": "#c08e78",
+   "l": "#a47464",
+   "o": "#582f26",
+   "I": "#f2dfd3",
+   "i": "#eac0b0"
+  }
+ },
+ "kael": {
+  "front": {
+   "frame": "weapon_kael",
+   "x": 6.0,
+   "y": 18,
+   "w": 16,
+   "h": 22,
+   "over": false,
+   "rest": [
+    11,
+    -9
+   ]
+  },
+  "skin": {
+   "H": "#fdece7",
+   "j": "#d4aa9d",
+   "k": "#c08f7c",
+   "l": "#a47668",
+   "o": "#582f27",
+   "I": "#f7ded8",
+   "i": "#eac2b6"
+  }
+ },
+ "nyx": {
+  "front": {
+   "frame": "weapon_nyx",
+   "x": 5.5,
+   "y": 25,
+   "w": 12,
+   "h": 33,
+   "over": false,
+   "rest": [
+    8,
+    -9
+   ],
+   "scale": 0.75,
+   "tilt": 0.6981
+  },
+  "back": {
+   "frame": "offhand_nyx",
+   "x": 5.5,
+   "y": 25,
+   "w": 12,
+   "h": 33,
+   "over": false,
+   "rest": [
+    -7.5,
+    -8.5
+   ],
+   "scale": 0.75,
+   "tilt": -0.4363
+  },
+  "skin": {
+   "H": "#fdebe5",
+   "j": "#cea295",
+   "k": "#ba8876",
+   "l": "#a07063",
+   "o": "#552d25",
+   "I": "#f7ddd6",
+   "i": "#e3b9ad"
+  }
+ },
+ "fen": {
+  "front": {
+   "frame": "weapon_fen",
+   "x": 8.5,
+   "y": 18,
+   "w": 13,
+   "h": 36,
+   "over": false,
+   "rest": [
+    10,
+    -12
+   ],
+   "scale": 0.75,
+   "string": [
+    2.5,
+    1.5,
+    2.5,
+    34.5
+   ],
+   "arrow": {
+    "frame": "arrow",
+    "x": 1,
+    "y": 7.0,
+    "w": 42,
+    "h": 14,
+    "scale": 0.45
+   }
+  },
+  "skin": {
+   "H": "#fed3b4",
+   "j": "#d59878",
+   "k": "#c18060",
+   "l": "#a56950",
+   "o": "#582a1e",
+   "I": "#f8c7a8",
+   "i": "#ebae8c"
+  }
+ },
+ "marin": {
+  "front": {
+   "frame": "weapon_marin",
+   "x": 6.0,
+   "y": 17,
+   "w": 14,
+   "h": 21,
+   "over": false,
+   "rest": [
+    11,
+    -9
+   ]
+  },
+  "skin": {
+   "H": "#fcede8",
+   "j": "#cca396",
+   "k": "#b98977",
+   "l": "#9e7163",
+   "o": "#552d25",
+   "I": "#f6dfd9",
+   "i": "#e1baae"
+  }
+ },
+ "sira": {
+  "front": {
+   "frame": "weapon_sira",
+   "x": 4.0,
+   "y": 2,
+   "w": 9,
+   "h": 17,
+   "over": false,
+   "rest": [
+    11,
+    -16
+   ],
+   "pose": "open"
+  },
+  "skin": {
+   "H": "#fdeee9",
+   "j": "#d4aca1",
+   "k": "#c09180",
+   "l": "#a4776b",
+   "o": "#583028",
+   "I": "#f7e0da",
+   "i": "#eac5bb"
+  }
+ },
+ "pip": {
+  "front": {
+   "frame": "weapon_pip",
+   "x": 6.0476190476190474,
+   "y": 18,
+   "w": 12,
+   "h": 22,
+   "over": false,
+   "rest": [
+    11,
+    -9
+   ]
+  },
+  "skin": {
+   "H": "#feeee8",
+   "j": "#d6aa9d",
+   "k": "#c2907c",
+   "l": "#a67668",
+   "o": "#592f27",
+   "I": "#f8e0d9",
+   "i": "#ecc3b6"
+  }
+ },
+ "dravik": {
+  "front": {
+   "frame": "weapon_dravik",
+   "x": 5.0,
+   "y": 42,
+   "w": 11,
+   "h": 50,
+   "over": false,
+   "rest": [
+    13,
+    -9
+   ],
+   "scale": 0.75
+  },
+  "skin": {
+   "H": "#fbece8",
+   "j": "#cfa99d",
+   "k": "#bb8e7d",
+   "l": "#a07568",
+   "o": "#562f27",
+   "I": "#f5ded9",
+   "i": "#e4c1b7"
+  }
+ },
+ "fenrir": {
+  "front": {
+   "frame": "weapon_fenrir",
+   "x": 8.0,
+   "y": 44,
+   "w": 17,
+   "h": 66,
+   "over": false,
+   "rest": [
+    11,
+    -12
+   ],
+   "scale": 0.75,
+   "tilt": 0.9076,
+   "twoHand": 10.5
+  },
+  "skin": {
+   "H": "#fdece7",
+   "j": "#d5aa9d",
+   "k": "#c1907d",
+   "l": "#a57668",
+   "o": "#582f27",
+   "I": "#f7ded8",
+   "i": "#ebc3b7"
+  }
+ },
+ "neris": {
+  "front": {
+   "frame": "weapon_neris",
+   "x": 5.0,
+   "y": 20,
+   "w": 11,
+   "h": 24,
+   "over": false,
+   "rest": [
+    11,
+    -9
+   ]
+  },
+  "skin": {
+   "H": "#feeee9",
+   "j": "#d4aa9d",
+   "k": "#bf907d",
+   "l": "#a47668",
+   "o": "#582f27",
+   "I": "#f8e0da",
+   "i": "#e9c3b7"
+  }
+ },
+ "sylva": {
+  "front": {
+   "frame": "weapon_sylva",
+   "x": 4.666666666666667,
+   "y": 16,
+   "w": 9,
+   "h": 20,
+   "over": false,
+   "rest": [
+    11,
+    -9
+   ]
+  },
+  "skin": {
+   "H": "#feeeea",
+   "j": "#d5ac9f",
+   "k": "#c1917e",
+   "l": "#a57769",
+   "o": "#583028",
+   "I": "#f8e0db",
+   "i": "#ebc5b9"
+  }
+ },
+ "valdris": {
+  "front": {
+   "frame": "weapon_valdris",
+   "x": 10.5,
+   "y": 42,
+   "w": 22,
+   "h": 50,
+   "over": false,
+   "rest": [
+    13,
+    -9
+   ],
+   "scale": 0.75
+  },
+  "skin": {
+   "H": "#dbede8",
+   "j": "#9fa49e",
+   "k": "#908b7e",
+   "l": "#7b7269",
+   "o": "#422e28",
+   "I": "#d6dfd9",
+   "i": "#afbcb8"
+  }
+ }
+}

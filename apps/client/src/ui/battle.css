@@ -1,0 +1,1434 @@
+/* ================================================================== the battle screen (ui/battleHud.ts)
+   Pixel art on one grid: --p is the CSS px of one pixel (a whole number). Every frame is drawn by our own code
+   (ui/pixelKit.ts, handed over as --k-<name>), 9-sliced by border-image or shown at its own size x --p; pictures
+   and the pixel font are sized as whole multiples of --p too. Thai text is Kanit, sized in --p. */
+
+body.in-battle #ui > :not(.battle-ui) {
+  display: none !important;
+}
+.battle-ui {
+  --p: 2px;
+  --gold: #ffd75a;
+  --ink: #05070d;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s;
+  user-select: none;
+  color: #fff;
+}
+.battle-ui.show {
+  opacity: 1;
+}
+:where(.battle-ui button) {
+  font: inherit;
+  color: inherit;
+  pointer-events: auto;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.battle-ui .pxi,
+.battle-ui canvas.pxt {
+  display: block;
+  image-rendering: pixelated;
+  flex: none;
+}
+.battle-ui.over > :not(.bt-result) {
+  opacity: 0 !important;
+  transition: opacity 0.3s;
+}
+
+/* ---------------------------------------------------------------- the kit's frames */
+.k-panel,
+.k-badge,
+.k-btn,
+.k-btnOn,
+.k-plate,
+.k-hp,
+.k-barAlly,
+.k-barFoe {
+  border-style: solid;
+  box-sizing: border-box;
+  image-rendering: pixelated;
+}
+.k-panel {
+  border-width: calc(var(--p) * 5);
+  border-image: var(--k-panel) 10 fill / calc(var(--p) * 10) stretch;
+}
+.k-badge {
+  border-width: calc(var(--p) * 4);
+  border-image: var(--k-badge) 7 fill / calc(var(--p) * 7) stretch;
+}
+.k-btn {
+  border-width: calc(var(--p) * 3);
+  border-image: var(--k-btn) 5 fill / calc(var(--p) * 5) stretch;
+}
+.k-btnOn {
+  border-width: calc(var(--p) * 3);
+  border-image: var(--k-btnOn) 5 fill / calc(var(--p) * 5) stretch;
+}
+.k-plate {
+  border-width: calc(var(--p) * 2);
+  border-image: var(--k-plate) 3 fill / calc(var(--p) * 3) stretch;
+}
+.k-hp {
+  border-width: calc(var(--p) * 2);
+  border-image: var(--k-hp) 3 fill / calc(var(--p) * 3) stretch;
+}
+.k-barAlly {
+  border-width: calc(var(--p) * 3);
+  border-image: var(--k-barAlly) 6 9 fill / calc(var(--p) * 6) calc(var(--p) * 9) stretch;
+}
+.k-barFoe {
+  border-width: calc(var(--p) * 3);
+  border-image: var(--k-barFoe) 6 9 fill / calc(var(--p) * 6) calc(var(--p) * 9) stretch;
+}
+.k-chipAlly { background: var(--k-chipAlly) 0 0 / 100% 100% no-repeat; }
+.k-chipFoe { background: var(--k-chipFoe) 0 0 / 100% 100% no-repeat; }
+.k-chipNext { background: var(--k-chipNext) 0 0 / 100% 100% no-repeat; }
+.k-window { background: var(--k-window) 0 0 / 100% 100% no-repeat; }
+.k-windowFoe { background: var(--k-windowFoe) 0 0 / 100% 100% no-repeat; }
+.k-chipAlly,
+.k-chipFoe,
+.k-chipNext,
+.k-window,
+.k-windowFoe {
+  image-rendering: pixelated;
+}
+
+/* small buttons */
+.bt-btn {
+  min-width: calc(var(--p) * 18);
+  height: calc(var(--p) * 18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--p);
+  padding: 0 var(--p);
+  font-size: calc(var(--p) * 6);
+  font-weight: 700;
+  transition: filter 0.1s, transform 0.1s;
+}
+.bt-btn:hover {
+  filter: brightness(1.2);
+}
+.bt-btn:active {
+  transform: translateY(var(--p));
+}
+.bt-btn.on {
+  animation: blink-on 1.2s steps(2) infinite;
+}
+@keyframes blink-on { 50% { filter: brightness(1.25); } }
+.bt-speed {
+  display: flex;
+  align-items: center;
+  gap: var(--p);
+}
+
+/* ---------------------------------------------------------------- top left: the turn, the turn order */
+.bt-left {
+  position: absolute;
+  top: calc(var(--p) * 4 + env(safe-area-inset-top));
+  left: calc(var(--p) * 4 + env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--p) * 4);
+}
+.bt-turn {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--p) * 2);
+  padding: 0 calc(var(--p) * 3);
+}
+.bt-turn canvas:first-child,
+.bt-turn canvas:last-child {
+  margin-bottom: var(--p);
+}
+.bt-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--p) * 2);
+  width: calc(var(--p) * 34);
+}
+.bt-chip {
+  position: relative;
+  width: calc(var(--p) * 28);
+  height: calc(var(--p) * 28);
+  flex: none;
+  transition: width 0.3s, height 0.3s;
+}
+.bt-chip.next {
+  width: calc(var(--p) * 34);
+  height: calc(var(--p) * 34);
+  animation: chip-next 1.2s steps(2) infinite;
+}
+.bt-chip.next::after {
+  /* a gold pointer on its right: this one goes next */
+  content: "";
+  position: absolute;
+  right: calc(var(--p) * -6);
+  top: 50%;
+  margin-top: calc(var(--p) * -3);
+  border: calc(var(--p) * 3) solid transparent;
+  border-left-color: #ffd75a;
+}
+.bt-chip.leaving {
+  position: absolute;
+  left: calc(var(--p) * 3);
+  margin: 0;
+}
+.bt-chip-face {
+  position: absolute;
+  inset: calc(var(--p) * 3);
+  overflow: hidden;
+  display: grid;
+  place-items: end center;
+}
+.bt-chip.next .bt-chip-face {
+  inset: calc(var(--p) * 4);
+}
+@keyframes chip-next { 50% { filter: brightness(1.25); } }
+
+/* ---------------------------------------------------------------- top middle: both teams' HP, VS */
+.bt-top {
+  --barw: min(calc(var(--p) * 130), calc((100vw - var(--p) * 240) / 2));
+  position: absolute;
+  top: calc(var(--p) * 4 + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  display: flex;
+  align-items: flex-start;
+}
+.bt-team {
+  width: var(--barw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--p);
+}
+.bt-bar {
+  position: relative;
+  height: calc(var(--p) * 13);
+}
+.bt-track {
+  position: absolute;
+  inset: 0;
+  background: #0a0d16;
+  overflow: hidden;
+}
+.bt-team.ally .bt-track {
+  clip-path: polygon(calc(var(--p) * 3) 0, 100% 0, 100% calc(100% - var(--p) * 3), calc(100% - var(--p) * 3) 100%, 0 100%, 0 calc(var(--p) * 3));
+}
+.bt-team.foe .bt-track {
+  clip-path: polygon(0 0, calc(100% - var(--p) * 3) 0, 100% calc(var(--p) * 3), 100% 100%, calc(var(--p) * 3) 100%, 0 calc(100% - var(--p) * 3));
+}
+/* moved by teamBar.ts through --lvl (level), --wht (where the white ends), --rf (where a rise began), 0..1 */
+.bt-track {
+  --lvl: 1;
+  --wht: 1;
+  --rf: 1;
+}
+.bt-fill,
+.bt-trail,
+.bt-rise,
+.bt-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+.bt-fill {
+  width: calc(var(--lvl) * 100%);
+}
+.bt-trail {
+  width: calc(var(--wht) * 100%);
+}
+/* a rise: the new part, flashing white (its opacity fades out) */
+.bt-rise {
+  left: calc(var(--rf) * 100%);
+  width: calc((var(--lvl) - var(--rf)) * 100%);
+  background: #ffffff;
+  opacity: 0;
+}
+/* the bright head leading the draining white */
+.bt-head {
+  left: calc(var(--wht) * 100% - var(--p));
+  width: var(--p);
+  background: #ffffff;
+  opacity: 0;
+}
+.bt-team.foe .bt-fill,
+.bt-team.foe .bt-trail {
+  left: auto;
+  right: 0;
+}
+.bt-team.foe .bt-rise {
+  left: auto;
+  right: calc(var(--rf) * 100%);
+}
+.bt-team.foe .bt-head {
+  left: auto;
+  right: calc(var(--wht) * 100% - var(--p));
+}
+.bt-fill {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--p) * 5), rgba(0, 0, 0, 0.32) calc(var(--p) * 5) calc(var(--p) * 6)),
+    linear-gradient(180deg, #d8f6ff 0 calc(var(--p) * 1), #6ad8ff calc(var(--p) * 1) calc(var(--p) * 4), #2a8ad8 calc(var(--p) * 4));
+}
+.bt-team.foe .bt-fill {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--p) * 5), rgba(0, 0, 0, 0.32) calc(var(--p) * 5) calc(var(--p) * 6)),
+    linear-gradient(180deg, #ffd8cc 0 calc(var(--p) * 1), #ff5a48 calc(var(--p) * 1) calc(var(--p) * 4), #b8243a calc(var(--p) * 4));
+}
+.bt-trail {
+  /* draining: warm cream; while it holds just after the hit: pure white */
+  background: linear-gradient(180deg, #fff6e8 0 calc(var(--p) * 2), #ffdcb8 calc(var(--p) * 2));
+}
+.bt-track.holding .bt-trail {
+  background: #ffffff;
+}
+.bt-team.hit .bt-bar {
+  animation: bar-hit 0.3s steps(3);
+}
+@keyframes bar-hit {
+  0% { transform: translateY(calc(var(--p) * 1)); filter: brightness(1.8); }
+  50% { transform: translateY(calc(var(--p) * -1)); }
+}
+.bt-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--p) * 2);
+  padding: 0 calc(var(--p) * 2);
+}
+.bt-team.ally .bt-sub {
+  flex-direction: row-reverse;
+}
+.bt-num {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 var(--p);
+}
+.bt-count {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p) * 2);
+  font-size: calc(var(--p) * 5);
+  font-weight: 700;
+  color: #dfe8f8;
+  text-shadow: 0 var(--p) 0 var(--ink), var(--p) 0 0 var(--ink), calc(var(--p) * -1) 0 0 var(--ink), 0 calc(var(--p) * -1) 0 var(--ink);
+}
+.bt-vs {
+  position: relative;
+  width: calc(var(--p) * 48);
+  height: calc(var(--p) * 48);
+  margin: calc(var(--p) * -8) calc(var(--p) * -3) 0;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+}
+.bt-vs > img {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.bt-vs canvas {
+  position: relative;
+  margin-top: calc(var(--p) * -8);
+}
+
+/* ---------------------------------------------------------------- top right: settings, AUTO, speed */
+.bt-side {
+  position: absolute;
+  top: calc(var(--p) * 4 + env(safe-area-inset-top));
+  right: calc(var(--p) * 4 + env(safe-area-inset-right));
+  display: flex;
+  gap: calc(var(--p) * 2);
+}
+
+/* ---------------------------------------------------------------- the menu */
+.bt-menu {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
+  display: none;
+  flex-direction: column;
+  gap: calc(var(--p) * 3);
+  min-width: calc(var(--p) * 110);
+  padding: calc(var(--p) * 2);
+  pointer-events: auto;
+  z-index: 50;
+}
+.bt-menu.open {
+  display: flex;
+  animation: pop-in 0.22s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.bt-menu-title {
+  text-align: center;
+  font-weight: 800;
+  font-size: calc(var(--p) * 7);
+  color: var(--gold);
+}
+.bt-menu .bt-btn {
+  height: calc(var(--p) * 20);
+}
+
+/* ---------------------------------------------------------------- the fighters: tap areas, floating words */
+.bt-unit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+}
+.bt-unit.gone {
+  display: none;
+}
+/* every fighter takes the pointer (its hover card / long press); only a target can be picked (crosshair) */
+.bt-hit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% 0;
+  pointer-events: auto !important;
+  cursor: default;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+.bt-unit.can .bt-hit {
+  cursor: crosshair;
+}
+.bt-float {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0 calc(var(--p) * 2);
+  font-size: calc(var(--p) * 5);
+  font-weight: 800;
+  line-height: calc(var(--p) * 8);
+  white-space: nowrap;
+  background: #2a3a5a;
+  box-shadow: 0 0 0 var(--p) var(--ink), inset 0 var(--p) 0 rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  animation: bt-float 1.2s cubic-bezier(0.2, 1.2, 0.3, 1) both;
+}
+.bt-float.good { background: #1e7a46; }
+.bt-float.bad { background: #8a2430; }
+@keyframes bt-float {
+  0% { translate: -50% calc(var(--p) * 3); scale: 0.5; opacity: 0; }
+  15% { translate: -50% calc(var(--p) * -2); scale: 1.1; opacity: 1; }
+  25% { scale: 1; }
+  75% { translate: -50% calc(var(--p) * -7); opacity: 1; }
+  100% { translate: -50% calc(var(--p) * -11); opacity: 0; }
+}
+
+@keyframes slide-l { from { transform: translateX(calc(var(--p) * -24)); opacity: 0; } }
+@keyframes rise { from { transform: translateY(calc(var(--p) * 12)); opacity: 0; } }
+@keyframes pop-in { from { transform: scale(0.7); opacity: 0; } }
+
+/* ---------------------------------------------------------------- the opening */
+.bt-intro {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: calc(var(--p) * 6);
+  pointer-events: none;
+  z-index: 5;
+  animation: intro-out 0.3s 1.55s ease-in forwards;
+}
+.bi-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: calc(var(--p) * 76);
+  translate: 0 -50%;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 calc(var(--p) * 2), rgba(255, 255, 255, 0.03) calc(var(--p) * 2) calc(var(--p) * 3)),
+    linear-gradient(180deg, transparent, rgba(5, 8, 16, 0.9) 12%, rgba(5, 8, 16, 0.9) 88%, transparent);
+  animation: band-in 0.3s cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+.bi-band::before,
+.bi-band::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--p);
+  background: repeating-linear-gradient(90deg, var(--gold) 0 calc(var(--p) * 4), transparent calc(var(--p) * 4) calc(var(--p) * 6));
+}
+.bi-band::before { top: 12%; }
+.bi-band::after { bottom: 12%; }
+@keyframes band-in { from { transform: scaleY(0); } }
+.bi-side {
+  position: relative;
+  display: flex;
+  gap: calc(var(--p) * 3);
+  justify-content: flex-end;
+}
+.bi-side.foe {
+  justify-content: flex-start;
+}
+.bi-face {
+  position: relative;
+  width: calc(var(--p) * 28);
+  height: calc(var(--p) * 28);
+  animation: face-in-l 0.4s calc(0.12s + var(--i) * 0.06s) cubic-bezier(0.2, 1.3, 0.3, 1) both;
+}
+.bi-side.foe .bi-face {
+  animation-name: face-in-r;
+}
+@keyframes face-in-l { from { transform: translateX(calc(var(--p) * -60)); opacity: 0; } }
+@keyframes face-in-r { from { transform: translateX(calc(var(--p) * 60)); opacity: 0; } }
+.bi-mid {
+  position: relative;
+  width: calc(var(--p) * 96);
+  height: calc(var(--p) * 96);
+  display: grid;
+  place-items: center;
+  animation: vs-slam 0.45s 0.3s cubic-bezier(0.3, 1.8, 0.4, 1) both;
+}
+.bi-mid > img {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.bi-mid canvas {
+  position: relative;
+  margin-top: calc(var(--p) * -14);
+}
+@keyframes vs-slam { from { transform: scale(2.5); opacity: 0; } }
+.bi-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  top: calc(50% + var(--p) * 26);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: title-in 0.45s 0.55s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.bi-title span {
+  font-size: calc(var(--p) * 6);
+  font-weight: 800;
+  color: #fff3c8;
+  text-shadow: 0 var(--p) 0 #2a1a04;
+}
+@keyframes title-in { from { transform: scale(0.3); opacity: 0; filter: brightness(4); } }
+@keyframes intro-out { to { opacity: 0; transform: scale(1.06); } }
+/* a phone held upright: one team over the other - our faces, the crest, "BATTLE START", theirs */
+.battle-ui.narrow .bt-intro {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: calc(var(--p) * 4);
+}
+.battle-ui.narrow .bi-band {
+  height: calc(var(--p) * 210);
+}
+.battle-ui.narrow .bi-side {
+  justify-content: center;
+}
+.battle-ui.narrow .bi-title {
+  position: relative;
+  top: auto;
+  order: 1;
+}
+.battle-ui.narrow .bi-side.foe {
+  order: 2;
+}
+
+/* ---------------------------------------------------------------- an ultimate's cut-in (fx/effects/ultCut.ts) */
+.bt-ultcut {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 40;
+}
+.uc-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+/* the hero and the move's name: inside the rift (clipped to it from JS), riding its slant (~11.3deg) */
+.uc-inner {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(0 0, 0 0, 0 0);
+}
+.uc-art {
+  position: absolute;
+  left: 22%;
+  top: 55%;
+  translate: -50% -60%;
+  animation: uc-art var(--dur) linear both;
+}
+@keyframes uc-art {
+  0%, 10% { transform: translateX(-45vw); filter: brightness(5); }
+  20% { transform: translateX(calc(var(--p) * 5)); filter: brightness(2); }
+  26% { transform: translateX(0); filter: brightness(1); }
+  70% { transform: translateX(calc(var(--p) * 12)); filter: brightness(1); }
+  80%, 100% { transform: translateX(calc(var(--p) * 22)); filter: brightness(3); }
+}
+.uc-text {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  translate: 0 -50%;
+  rotate: -11.3deg;
+  display: flex;
+  flex-direction: column;
+  gap: var(--p);
+  animation: uc-text var(--dur) linear both;
+}
+@keyframes uc-text {
+  0%, 14% { transform: translateX(calc(var(--p) * 50)); opacity: 0; }
+  24% { transform: translateX(calc(var(--p) * -3)); opacity: 1; }
+  30% { transform: translateX(0); }
+  70% { transform: translateX(calc(var(--p) * -8)); opacity: 1; }
+  80%, 100% { transform: translateX(calc(var(--p) * -16)); opacity: 1; }
+}
+.uc-who {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p) * 3);
+}
+.uc-who small {
+  font-size: calc(var(--p) * 6);
+  font-weight: 700;
+  color: color-mix(in srgb, var(--el) 55%, #ffffff);
+  text-shadow: 0 var(--p) 0 #0a0812;
+}
+.uc-text b {
+  font-size: calc(var(--p) * 17);
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+  color: #fff6d8;
+  text-shadow: 0 var(--p) 0 color-mix(in srgb, var(--el) 70%, #000), 0 calc(var(--p) * 2) 0 #0a0812;
+}
+.battle-ui.narrow .uc-art {
+  left: 20%;
+}
+.battle-ui.narrow .uc-text {
+  left: 44%;
+  top: 46%;
+}
+.battle-ui.narrow .uc-text b {
+  font-size: calc(var(--p) * 13);
+}
+
+/* ---------------------------------------------------------------- the end */
+.bt-result {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 6, 12, 0);
+  transition: background 0.4s;
+  pointer-events: auto;
+}
+.bt-result.show {
+  background: rgba(4, 6, 12, 0.6);
+}
+.br-rays {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 160vmax;
+  height: 160vmax;
+  translate: -50% -50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 220, 120, 0.13) 0 6deg, transparent 6deg 18deg);
+  mask-image: radial-gradient(circle, #000 8%, transparent 45%);
+  animation: rays 18s linear infinite;
+  pointer-events: none;
+}
+.bt-result.lose .br-rays {
+  background: repeating-conic-gradient(from 0deg, rgba(160, 60, 60, 0.12) 0 6deg, transparent 6deg 18deg);
+}
+@keyframes rays { to { rotate: 360deg; } }
+.br-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--p) * 4);
+  min-width: calc(var(--p) * 150);
+  padding: 0 calc(var(--p) * 6) calc(var(--p) * 2);
+  text-align: center;
+  animation: pop-in 0.45s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.br-title {
+  margin-top: calc(var(--p) * -20);
+  animation: title-in 0.5s 0.15s cubic-bezier(0.2, 1.6, 0.3, 1) both;
+}
+.br-stars {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--p) * 3);
+}
+.br-stars img.on {
+  animation: star-stamp 0.45s calc(0.35s + var(--i) * 0.22s) cubic-bezier(0.3, 1.8, 0.4, 1) both;
+}
+@keyframes star-stamp { from { transform: scale(2.6) rotate(-30deg); opacity: 0; filter: brightness(3); } }
+.br-sub {
+  font-size: calc(var(--p) * 6);
+  font-weight: 700;
+}
+.br-mvp {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p) * 4);
+  padding: calc(var(--p) * 1) calc(var(--p) * 4) calc(var(--p) * 1) calc(var(--p) * 1);
+  text-align: left;
+  animation: rise 0.4s 0.9s ease-out both;
+}
+.br-mvp > div:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--p);
+}
+.br-mvp b {
+  font-size: calc(var(--p) * 6);
+}
+.br-mvp span,
+.br-stats span {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p) * 2);
+  font-size: calc(var(--p) * 5);
+  color: #cfd8ea;
+}
+.br-stats {
+  display: flex;
+  gap: calc(var(--p) * 8);
+}
+.br-note {
+  font-size: calc(var(--p) * 4.5);
+  color: #7a88a6;
+}
+.br-back {
+  height: calc(var(--p) * 20);
+  padding: 0 calc(var(--p) * 8);
+  font-size: calc(var(--p) * 6);
+  font-weight: 800;
+}
+
+/* ---------------------------------------------------------------- narrow screens (a phone held upright)
+   Rows from the top: both teams' HP and the VS crest across the whole width; the turn badge (left) and the
+   buttons (right) right under the HP bars, either side of the crest; the turn order as a row of chips; then the field; at the bottom the card, the energy, the
+   moves - nothing sits over the field. */
+.battle-ui.narrow .bt-top {
+  --barw: calc((100vw - var(--p) * 50) / 2);
+}
+.battle-ui.narrow .bt-count {
+  display: none;
+}
+.battle-ui.narrow .bt-vs {
+  margin-top: calc(var(--p) * -6);
+}
+.battle-ui.narrow .bt-left {
+  top: calc(var(--p) * 34 + env(safe-area-inset-top));
+  left: calc(var(--p) * 3 + env(safe-area-inset-left));
+  gap: calc(var(--p) * 3);
+}
+.battle-ui.narrow .bt-rail {
+  flex-direction: row;
+  width: auto;
+  height: calc(var(--p) * 34);
+  gap: calc(var(--p) * 2);
+}
+.battle-ui.narrow .bt-chip.next {
+  margin-right: calc(var(--p) * 5);
+}
+.battle-ui.narrow .bt-chip.leaving {
+  top: auto;
+  bottom: 0;
+}
+.battle-ui.narrow .bt-side {
+  top: calc(var(--p) * 34 + env(safe-area-inset-top));
+  right: calc(var(--p) * 3 + env(safe-area-inset-right));
+  flex-direction: row;
+}
+@media (prefers-reduced-motion: reduce) {
+  .battle-ui *,
+  .battle-ui *::before,
+  .battle-ui *::after {
+    animation-duration: 0.01s !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ================================================================== the dock (the owner's layout)
+   One grid of tiles along the bottom, every size a whole number of pixels (--p):
+
+     | picture  | statuses (buffs / debuffs)       | energy          |
+     |          |------------------+---------------|-----------------|
+     |          | HP               | basic attack  | skill 1| skill 2|
+     |----------|------------------|               |        |        |
+     | stars    | name LV / element|               |        |        |
+
+   and on the right the special team: each one's picture and its skill 1. A tile is flat dark glass with a thin
+   bright edge (k-tile); the pictures sit in windows; the moves are their own square frames. */
+.k-tile {
+  border-style: solid;
+  border-width: calc(var(--p) * 2);
+  border-image: var(--k-tile) 4 fill / calc(var(--p) * 4) stretch;
+  image-rendering: pixelated;
+  box-sizing: border-box;
+}
+.k-windowAssist { background: var(--k-windowAssist) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; }
+.bt-dock,
+.bt-assist {
+  position: absolute;
+  bottom: calc(var(--p) * 4 + env(safe-area-inset-bottom));
+  display: grid;
+  gap: calc(var(--p) * 3);
+  pointer-events: auto;
+  font-size: max(11px, calc(var(--p) * 5));
+}
+.bt-dock {
+  left: calc(var(--p) * 4 + env(safe-area-inset-left));
+  /* a monster's turn: its card in the enemy's colours */
+  grid-template-columns: calc(var(--p) * 48) calc(var(--p) * 96) repeat(4, calc(var(--p) * 48));
+  grid-template-rows: calc(var(--p) * 18) calc(var(--p) * 16) calc(var(--p) * 8) calc(var(--p) * 18);
+  grid-template-areas:
+    "prof  en st    st st st"
+    "prof  hp basic s1 s2 ult"
+    "prof  nm basic s1 s2 ult"
+    "stars nm basic s1 s2 ult";
+}
+.bt-assist {
+  right: calc(var(--p) * 4 + env(safe-area-inset-right));
+  grid-template-columns: repeat(2, calc(var(--p) * 48)) calc(var(--p) * 8) repeat(2, calc(var(--p) * 48));
+  grid-template-rows: calc(var(--p) * 48);
+  grid-template-areas: "p1 k1 . p2 k2";
+}
+.bt-assist.none,
+.battle-ui:not(.turn) .bt-dock,
+.battle-ui:not(.turn) .bt-assist {
+  opacity: 0;
+  pointer-events: none;
+}
+.bd-prof { grid-area: prof; }
+.bd-stars { grid-area: stars; }
+.bd-st { grid-area: st; }
+.bd-hp { grid-area: hp; }
+.bd-nm { grid-area: nm; }
+.bd-basic { grid-area: basic; }
+.bd-en { grid-area: en; }
+.bd-s1 { grid-area: s1; }
+.bd-s2 { grid-area: s2; }
+.bd-ult { grid-area: ult; }
+.bd-p1 { grid-area: p1; }
+.bd-k1 { grid-area: k1; }
+.bd-p2 { grid-area: p2; }
+.bd-k2 { grid-area: k2; }
+.bt-dock.enter > * {
+  animation: rise 0.3s cubic-bezier(0.2, 1.3, 0.3, 1) both;
+}
+/* the team's energy is the same whoever's card it is: it stays still */
+.bt-dock.enter > .bd-en {
+  animation: none;
+}
+.bt-dock.enter > :nth-child(n + 6) { animation-delay: 0.05s; }
+
+/* the pictures: a hero standing in its window (whole pixels, the bottom of it), a monster in its own */
+.bd-prof,
+.bd-p1,
+.bd-p2 {
+  position: relative;
+  background: 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  width: calc(var(--p) * 48);
+  height: calc(var(--p) * 48);
+}
+.bd-fig {
+  position: absolute;
+  inset: calc(var(--p) * 4);
+  overflow: hidden;
+}
+.bd-figimg {
+  position: absolute;
+  max-width: none;
+}
+.bd-stars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  font-weight: 800;
+  color: #fff;
+}
+.bd-tag {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--p) * -3);
+  translate: -50% 0;
+  padding: 0 var(--p);
+  background: #2a1450;
+  box-shadow: 0 0 0 var(--p) var(--ink), inset 0 var(--p) 0 rgba(200, 168, 255, 0.5);
+}
+/* (a special team's picture doesn't blink when it can be called - the owner found it distracting) */
+.bd-p1.on,
+.bd-p2.on {
+  filter: brightness(1.25);
+}
+.bd-p1.empty,
+.bd-p2.empty,
+.bd-k1.empty,
+.bd-k2.empty {
+  visibility: hidden;
+}
+
+/* statuses across the top */
+.bd-st {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p) * 2);
+  overflow: hidden;
+}
+/* a status: its icon (double size), the turns left small over its corner */
+.bd-si {
+  position: relative;
+  flex: none;
+  animation: pop-in 0.25s cubic-bezier(0.2, 1.6, 0.3, 1) both;
+}
+.bd-si canvas {
+  position: absolute;
+  right: calc(var(--p) * -3);
+  bottom: calc(var(--p) * -3);
+}
+.bd-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--p);
+  padding: 0 calc(var(--p) * 2) 0 var(--p);
+  font-weight: 700;
+  line-height: calc(var(--p) * 10);
+  background: rgba(30, 110, 70, 0.6);
+  box-shadow: inset 0 0 0 var(--p) rgba(120, 255, 170, 0.35);
+}
+.bd-chip.bad {
+  background: rgba(130, 30, 44, 0.65);
+  box-shadow: inset 0 0 0 var(--p) rgba(255, 120, 120, 0.35);
+}
+.bd-none {
+  color: #6a7a9a;
+}
+
+/* HP: the heart, the bar, the number */
+.bd-hp,
+.bd-en {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.bd-hp > *,
+.bd-en > * {
+  grid-area: 1 / 1;
+}
+.bd-over {
+  position: relative;
+  margin-left: calc(var(--p) * 6);
+}
+.bd-track {
+  position: relative;
+  flex: 1;
+  height: calc(var(--p) * 6);
+  background: #080b12;
+  box-shadow: 0 0 0 var(--p) #26324c;
+}
+.bd-track i,
+.bd-track b {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+.bd-track i {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--p) * 4), rgba(0, 0, 0, 0.3) calc(var(--p) * 4) calc(var(--p) * 5)),
+    linear-gradient(180deg, #d8ffcc 0 var(--p), #5ee87a var(--p) calc(var(--p) * 3), #1e9a4a calc(var(--p) * 3));
+  transition: width 0.25s steps(5);
+}
+.bd-hp.foe .bd-track i {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--p) * 4), rgba(0, 0, 0, 0.3) calc(var(--p) * 4) calc(var(--p) * 5)),
+    linear-gradient(180deg, #ffd8cc 0 var(--p), #ff5a48 var(--p) calc(var(--p) * 3), #b8243a calc(var(--p) * 3));
+}
+.bd-track b {
+  bottom: auto;
+  height: var(--p);
+  background: #c8f0ff;
+}
+
+/* name + LV over element + class */
+.bd-nm {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--p);
+  padding: 0 calc(var(--p) * 2);
+  min-width: 0;
+}
+.bd-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p) * 2);
+  min-width: 0;
+}
+.bd-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: max(13px, calc(var(--p) * 7));
+  font-weight: 800;
+  line-height: 1.1;
+  text-shadow: 0 var(--p) 0 var(--ink);
+}
+.bd-lv {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--p);
+}
+.bd-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #b8c8e4;
+}
+
+/* energy: ten crystals and the number */
+
+.bd-crystals {
+  display: flex;
+}
+.bd-c.on {
+  animation: crystal 2.4s ease-in-out infinite;
+}
+.bd-c.on:nth-child(2n) { animation-delay: 0.3s; }
+.bd-c.on:nth-child(3n) { animation-delay: 0.7s; }
+@keyframes crystal { 50% { filter: brightness(1.35); } }
+.bd-c.gain {
+  animation: crystal-gain 0.5s cubic-bezier(0.2, 1.6, 0.3, 1) both;
+}
+@keyframes crystal-gain {
+  0% { transform: translateY(calc(var(--p) * -8)) scale(2); filter: brightness(3); opacity: 0; }
+  60% { transform: translateY(0) scale(0.9); filter: brightness(1.6); opacity: 1; }
+}
+
+/* a move: its square frame (steel for the basic attack, gold corners for a skill), the element's glow inside,
+   the icon, the cost on a hexagon (bottom right), its key (top left), dark with the turns left while resting */
+.bd-move {
+  position: relative;
+  width: calc(var(--p) * 48);
+  height: calc(var(--p) * 48);
+  display: grid;
+  place-items: center;
+  background: 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  transition: transform 0.12s, filter 0.15s;
+}
+.bd-move.basic { background-image: var(--k-basic); }
+.bd-move.skill { background-image: var(--k-skill); }
+.bd-move.none { filter: brightness(0.45) saturate(0.3); }
+.bd-glow {
+  position: absolute;
+  inset: calc(var(--p) * 5);
+  background: 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+}
+.bd-move > img {
+  position: relative;
+}
+.bd-cost {
+  position: absolute;
+  right: calc(var(--p) * -1);
+  bottom: calc(var(--p) * -1);
+  width: calc(var(--p) * 15);
+  height: calc(var(--p) * 17);
+  display: grid;
+  place-items: center;
+  background: 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+}
+.bd-cost canvas {
+  margin-top: calc(var(--p) * -1);
+}
+.bd-move kbd {
+  position: absolute;
+  left: calc(var(--p) * 4);
+  top: calc(var(--p) * 3);
+  font: inherit;
+  padding: 0;
+}
+.bd-rest {
+  position: absolute;
+  inset: calc(var(--p) * 5);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  background: rgba(6, 4, 16, 0.72);
+  background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 var(--p), transparent var(--p) calc(var(--p) * 3));
+}
+.bd-rest small {
+  font-size: max(10px, calc(var(--p) * 4.5));
+  font-weight: 700;
+  color: #c8b8ee;
+  line-height: 1;
+}
+.bd-move.off > img {
+  filter: grayscale(0.9) brightness(0.5);
+}
+:is(.bt-dock, .bt-assist):not(.mine) .bd-move {
+  cursor: default;
+  filter: saturate(0.75) brightness(0.88);
+}
+:is(.bt-dock, .bt-assist).mine .bd-move:not(.off):hover {
+  filter: brightness(1.12);
+}
+/* the chosen move: lifted, a step brighter, pixel corner brackets round it, blinking */
+:is(.bt-dock, .bt-assist).mine .bd-move.on {
+  filter: brightness(1.12);
+}
+.pxswirl {
+  position: absolute;
+  z-index: 1;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.bd-cost,
+.bd-move kbd {
+  z-index: 2;
+}
+/* the immortal barrier on the card's HP bar: a soft gold light breathing round it (smooth, by the owner's wish - the
+   bar itself stays pixels: a gold frame, the HP tinted gold) */
+.pxbar.barrier {
+  animation: bt-barrier 1.25s ease-in-out infinite alternate;
+}
+@keyframes bt-barrier {
+  from { filter: drop-shadow(0 0 2px rgba(255, 200, 70, 0.45)); }
+  to { filter: drop-shadow(0 0 7px rgba(255, 210, 90, 0.85)); }
+}
+.pxbar {
+  display: block;
+  flex: none;
+  image-rendering: pixelated;
+}
+
+/* a landscape screen too short of width for both: the special team moves up, on the right */
+.battle-ui.tight .bt-assist {
+  bottom: calc(var(--p) * 82 + env(safe-area-inset-bottom));
+}
+
+/* a phone held upright: the same tiles in rows, four across - the card, the energy, the moves, the special team */
+.battle-ui.narrow .bt-dock {
+  left: 0;
+  right: 0;
+  justify-content: center;
+  bottom: calc(var(--p) * 55 + env(safe-area-inset-bottom));
+  grid-template-columns: repeat(4, calc(var(--p) * 48));
+  grid-template-rows: calc(var(--p) * 18) calc(var(--p) * 16) calc(var(--p) * 8) calc(var(--p) * 18) calc(var(--p) * 48);
+  grid-template-areas:
+    "prof  en    en en"
+    "prof  hp    hp hp"
+    "prof  nm    nm nm"
+    "stars nm    nm nm"
+    "basic s1    s2 ult";
+}
+/* the statuses: just over the dock's top right (the energy bar has the whole row), more go up in rows */
+.battle-ui.narrow .bd-st {
+  grid-area: en;
+  justify-self: end;
+  align-self: start;
+  translate: 0 calc(-100% - var(--p) * 3);
+  flex-wrap: wrap-reverse;
+  justify-content: flex-end;
+  max-width: calc(var(--p) * 150);
+  row-gap: calc(var(--p) * 2);
+  overflow: visible;
+}
+.battle-ui.narrow .bt-assist {
+  left: 0;
+  right: 0;
+  justify-content: center;
+  /* the same four columns as the moves above it: a 2 x 4 grid */
+  grid-template-columns: repeat(4, calc(var(--p) * 48));
+  grid-template-areas: "p1 k1 p2 k2";
+}
+
+/* five stars in a 48 tile: their outlines overlap by a pixel */
+.bd-stars img + img {
+  margin-left: calc(var(--p) * -1);
+}
+
+/* the ultimate: the hero's face, dark above its charge, the % over it */
+.bd-ultface {
+  position: absolute;
+  inset: calc(var(--p) * 5);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.bd-ultdark {
+  position: absolute;
+  left: calc(var(--p) * 5);
+  right: calc(var(--p) * 5);
+  top: calc(var(--p) * 5);
+  background: rgba(6, 9, 18, 0.72);
+}
+.bd-ultpct {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--p) * 4);
+  display: flex;
+  justify-content: center;
+  z-index: 2;
+}
+.bd-move.ult.off > .bd-ultface img {
+  filter: grayscale(0.5) brightness(0.8);
+}
+/* (a charged ult doesn't blink either - "ULT" in gold and its key say it's ready) */
+
+/* ---------------------------------------------------------------- hover cards (PC: a mouse over a fighter / a move)
+   Dark glass edged in the team's colour (a move: gold), corners cut a step; whole pixels like the rest. */
+.k-tipAlly,
+.k-tipFoe,
+.k-tipSkill {
+  border-style: solid;
+  border-width: calc(var(--p) * 3);
+  image-rendering: pixelated;
+}
+.k-tipAlly { border-image: var(--k-tipAlly) 4 fill / calc(var(--p) * 4) stretch; }
+.k-tipFoe { border-image: var(--k-tipFoe) 4 fill / calc(var(--p) * 4) stretch; }
+.k-tipSkill { border-image: var(--k-tipSkill) 4 fill / calc(var(--p) * 4) stretch; }
+.bt-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 40;
+  display: none;
+  width: calc(var(--p) * 122);
+  padding: calc(var(--p) * 2) calc(var(--p) * 3);
+  pointer-events: none;
+  color: #e8eefc;
+  font-size: max(12px, calc(var(--p) * 5));
+  line-height: 1.35;
+}
+.bt-tip.show {
+  display: grid;
+  gap: calc(var(--p) * 2);
+  animation: tip-in 0.12s steps(2) both;
+}
+@keyframes tip-in { from { opacity: 0; } }
+.tp-head {
+  display: flex;
+  gap: calc(var(--p) * 3);
+  align-items: center;
+}
+.tp-face {
+  flex: none;
+  position: relative;
+  width: calc(var(--p) * 28);
+  height: calc(var(--p) * 28);
+}
+.tp-icon {
+  flex: none;
+  width: calc(var(--p) * 32);
+  height: calc(var(--p) * 32);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #070a14;
+  box-shadow: inset 0 0 0 var(--p) #3a4868;
+}
+.tp-id {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: var(--p);
+}
+.tp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--p) * 2);
+}
+.tp-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: #fff;
+}
+.tp-lv,
+.tp-cost,
+.tp-hpn {
+  display: flex;
+  align-items: center;
+  gap: var(--p);
+  flex: none;
+}
+.tp-meta {
+  justify-content: flex-start;
+  color: #9fb0d0;
+  font-size: 0.86em;
+}
+.tp-hp {
+  position: relative;
+  height: calc(var(--p) * 4);
+  background: #080b12;
+  box-shadow: 0 0 0 var(--p) #26324c;
+}
+.tp-hp i,
+.tp-hp u {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(#8aff9a 0 25%, #2eb85a 25%);
+}
+.tp-hp.foe i {
+  background: linear-gradient(#ffb0a0 0 25%, #e03a48 25%);
+}
+.tp-hp u {
+  top: auto;
+  height: var(--p);
+  background: #e8f4ff;
+}
+.tp-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: calc(var(--p) * 2);
+}
+.tp-stats > div,
+.tp-st {
+  display: grid;
+  gap: var(--p);
+  justify-items: start;
+}
+.tp-stats small,
+.tp-st small {
+  color: #8a9ac0;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.tp-sts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--p) calc(var(--p) * 3);
+}
+.tp-si {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--p);
+  font-size: 0.86em;
+}
+.tp-si.good { color: #9effb4; }
+.tp-si.bad { color: #ffa0a0; }
+.tp-none { color: #6a7a9a; }
+.tp-fx {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--p);
+}
+.tp-fx li::before {
+  content: "+ ";
+  color: #ffd75a;
+  font-weight: 700;
+}
+.tp-note {
+  color: #9fb0d0;
+  font-size: 0.82em;
+  border-top: var(--p) solid #26324c;
+  padding-top: calc(var(--p) * 2);
+}
+
+/* a move that can't be pressed lets the pointer through to its tile (its card still shows); no callout on a long press */
+.bd-move:disabled {
+  pointer-events: none;
+}
+.bt-dock > *,
+.bt-assist > * {
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+/* the chosen move's result on a fighter's card: the HP it would lose blinks white, what it would heal green,
+   a shield it would give bright; the numbers by it; the statuses it would put on dashed */
+.tp-hp b,
+.tp-hp em {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.tp-hp b {
+  background: #fff4e8;
+  animation: tp-blink 0.45s ease-in-out infinite alternate;
+}
+.tp-hp em {
+  background: #b8ffb0;
+  animation: tp-blink 0.45s ease-in-out infinite alternate;
+}
+@keyframes tp-blink { from { opacity: 1; } to { opacity: 0.25; } }
+.tp-hp u.more {
+  background: #ffffff;
+  animation: tp-blink 0.45s ease-in-out infinite alternate;
+}
+.tp-chgs,
+.tp-chg {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--p) * 2);
+}
+.tp-chg small {
+  color: #8ad2ff;
+  font-size: 0.8em;
+  font-weight: 700;
+}
+.tp-chg.immune {
+  color: #c8d4ea;
+  font-size: 0.86em;
+}
+.tp-chg.ko {
+  color: #ff6a5a;
+  font-weight: 800;
+}
+/* a status the move would put on: on a light red (debuff) / light green (buff) ground - a strong one when it
+   already has it (it would be refreshed) - fading slowly in and out */
+.tp-si.new {
+  padding: 0 calc(var(--p) * 2);
+  color: #fff;
+  animation: tp-chip 0.45s ease-in-out infinite alternate;
+}
+.tp-si.new.bad { background: rgba(255, 96, 96, 0.28); }
+.tp-si.new.good { background: rgba(96, 255, 150, 0.24); }
+.tp-si.new.bad.has { background: rgba(214, 40, 56, 0.78); }
+.tp-si.new.good.has { background: rgba(30, 168, 86, 0.78); }
+@keyframes tp-chip { from { opacity: 1; } to { opacity: 0.45; } }

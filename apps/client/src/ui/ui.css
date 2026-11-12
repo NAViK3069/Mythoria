@@ -183,23 +183,14 @@
     radial-gradient(circle at 50% 38%, #2f8a91, #123c45 60%, #08212a);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7), inset 0 -8px 12px rgba(0, 0, 0, 0.35);
 }
-.avatar .lv {
-  position: absolute;
-  right: -7px;
-  bottom: -7px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(circle at 50% 35%, #1f5a62, #0a242b 75%);
-  box-shadow: 0 0 0 2px var(--ui-gold), 0 0 0 3px #3a2808, 0 2px 0 3px rgba(0, 0, 0, 0.5);
-  color: #fff;
+.profile .lv {
+  /* the level: just the number, in gold, at the front of the EXP bar */
+  flex: none;
+  color: var(--ui-gold);
   font-size: 13px;
   font-weight: 700;
   line-height: 1;
-  text-shadow: 0 1px 0 #000;
-  z-index: 2;
+  text-shadow: 0 1px 0 #000, 0 0 3px #000;
 }
 .profile .who {
   position: relative;
@@ -228,7 +219,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 .exp-t {
   font-size: 10px;
@@ -745,9 +736,56 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1px 6px 2px;
+  gap: 6px;
+  padding: 1px 2px 2px 6px;
   font-size: 11.5px;
   text-shadow: 0 1px 0 #000;
+}
+.mm-label .num {
+  margin-left: auto;
+}
+/* fold / unfold: a small gold arrow button at the end of the name strip */
+.mm-fold {
+  --px: 2px;
+  flex: none;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--ui-gold);
+  background: rgba(240, 207, 116, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(240, 207, 116, 0.45);
+  clip-path: polygon(2px 0, calc(100% - 2px) 0, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 0 calc(100% - 2px), 0 2px);
+  transition: background 0.15s, transform 0.12s;
+  position: relative;
+  z-index: 5;
+}
+.mm-fold:hover {
+  background: rgba(240, 207, 116, 0.3);
+}
+.mm-fold:active {
+  transform: scale(0.9);
+}
+.mm-fold .glyph {
+  width: 10px;
+  height: 5px;
+  transition: transform 0.22s ease;
+}
+/* folded: the map slides shut, leaving the name strip; the arrow points down ("open it") */
+.minimap .mm-slot {
+  max-height: 220px;
+  transition: max-height 0.28s cubic-bezier(0.3, 0.9, 0.3, 1), min-height 0.28s, opacity 0.2s;
+}
+.minimap.folded .mm-slot {
+  max-height: 0;
+  min-height: 0;
+  opacity: 0;
+}
+.minimap.folded .mm-fold .glyph {
+  transform: rotate(180deg);
 }
 .mm-label b {
   color: var(--ui-gold);
@@ -1040,6 +1078,9 @@
   z-index: 20;
   display: grid;
   place-items: center;
+  /* one cell exactly the size of the screen: a panel with a lot inside (a hero's page) scrolls inside
+     itself instead of growing the cell past the screen and being pushed off the bottom */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
   background:
     radial-gradient(ellipse at center, rgba(4, 20, 24, 0.5), rgba(2, 8, 10, 0.86)),
@@ -1814,8 +1855,8 @@
   --px: 6px;
   padding: 3px;
   background: var(--ui-gold-edge);
-  /* as big as fits both ways (the map is 96 x 68 tiles) */
-  width: min(100cqw, (100cqh - 40px) * 96 / 68 + 6px);
+  /* as big as fits both ways (the map is 128 x 92 tiles) */
+  width: min(100cqw, (100cqh - 40px) * 128 / 92 + 6px);
 }
 .mm-map.big {
   clip-path: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
@@ -1954,6 +1995,13 @@
   mask: radial-gradient(circle, #000 10%, transparent 60%);
   -webkit-mask: radial-gradient(circle, #000 10%, transparent 60%);
   animation: spin 18s linear infinite, fade-in 0.6s ease-out;
+}
+/* the sparks' layer lies over the whole screen, out of the layout - otherwise it takes a grid row of its own
+   and pushes the reward box down into the lower half */
+.rw-sparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 .rw-sparks i {
   position: absolute;
@@ -2099,6 +2147,36 @@
   .chat-peek {
     display: none;
   }
+  /* a smaller profile plate (the picture's size is set on it inline, hence !important) */
+  .profile .avatar {
+    width: 48px !important;
+    height: 48px !important;
+  }
+  .profile .avatar .face img {
+    width: 79px !important;
+    height: 79px !important;
+  }
+  .profile .who {
+    margin-left: -8px;
+    padding: 4px 12px 5px 14px;
+    gap: 1px;
+  }
+  .profile .name {
+    font-size: 14px;
+  }
+  .profile .title {
+    font-size: 10px;
+  }
+  .exp-row {
+    gap: 4px;
+    margin-top: 2px;
+  }
+  .profile .lv {
+    font-size: 11px;
+  }
+  .exp-t {
+    font-size: 9px;
+  }
   .minimap {
     width: 128px;
   }
@@ -2135,25 +2213,21 @@
     font-size: 10.5px;
     padding: 0 5px;
   }
+  /* phones: the play button is just its round sword emblem, at the right edge - the word plate would sit
+     where the thumb steers the joystick */
   .play .emblem {
-    width: 62px;
-    height: 62px;
+    width: 60px;
+    height: 60px;
   }
   .play .emblem .px-icon {
     width: 34px;
     height: 34px;
   }
   .play .plate {
-    margin-left: -28px;
-  }
-  .play .txt {
-    padding: 8px 14px 8px 34px;
-  }
-  .play .big {
-    font-size: 17px;
-  }
-  .play .sub {
     display: none;
+  }
+  .hud-bottom .play {
+    margin-left: auto;
   }
   .ab-title {
     font-size: 32px;
@@ -2205,7 +2279,7 @@
 @media (max-width: 560px) {
   .hud-top-right {
     left: var(--safe-l);
-    top: calc(var(--safe-t) + 80px);
+    top: calc(var(--safe-t) + 62px); /* just under the (smaller) profile plate */
   }
   .top-row {
     width: 100%;
@@ -2213,7 +2287,7 @@
   .top-row .row-icons {
     position: absolute;
     right: 0;
-    top: -78px;
+    top: -60px;
   }
   .wallet {
     flex: 1;
@@ -2248,7 +2322,7 @@
     justify-content: space-between;
   }
   .profile .who .bar {
-    width: 92px;
+    width: 80px;
   }
   .modes {
     grid-template-columns: 1fr;
@@ -2281,4 +2355,1306 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* ---------- warp pads: marker on the maps, the prompt, the destination panel */
+.mm-warp {
+  position: absolute;
+  width: 0;
+  height: 0;
+  z-index: 1;
+}
+.mm-warp i,
+.lg-warp {
+  display: block;
+  width: 9px;
+  height: 9px;
+  background: linear-gradient(135deg, #e2fbff, #45b8ff 55%, #3a35b8);
+  box-shadow: 0 0 0 1px #140a33, 0 0 8px 2px rgba(80, 180, 255, 0.75);
+  transform: rotate(45deg);
+}
+.mm-warp i {
+  position: absolute;
+  left: -4.5px;
+  top: -4.5px;
+  animation: warp-pulse 2s ease-in-out infinite;
+}
+.mm-map.mini .mm-warp i {
+  width: 6px;
+  height: 6px;
+  left: -3px;
+  top: -3px;
+}
+.lg-warp {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+@keyframes warp-pulse {
+  50% {
+    box-shadow: 0 0 0 1px #140a33, 0 0 14px 4px rgba(120, 200, 255, 0.95);
+  }
+}
+
+.warp-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 118px;
+  transform: translate(-50%, 16px) scale(0.92);
+  opacity: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+  border: 0;
+  cursor: pointer;
+  color: #eaf8ff;
+  background: linear-gradient(180deg, rgba(58, 53, 184, 0.96), rgba(20, 10, 51, 0.96));
+  box-shadow: inset 0 0 0 2px #45b8ff, inset 0 0 0 3px #140a33, 0 0 22px rgba(69, 184, 255, 0.55), 0 6px 16px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.2s, transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1);
+  font-family: inherit;
+}
+.warp-prompt.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+  animation: warp-glow 1.8s ease-in-out infinite;
+}
+.warp-prompt:hover {
+  filter: brightness(1.12);
+}
+.warp-prompt:active {
+  transform: translate(-50%, 2px) scale(0.98);
+}
+.warp-prompt .wp-ico {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle, #9ce9ff 0%, #3f74e8 55%, #2b1a6e 100%);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+.warp-prompt .wp-text {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.15;
+}
+.warp-prompt b {
+  font-size: 16px;
+  text-shadow: 0 0 8px rgba(120, 200, 255, 0.9), 0 1px 0 #000;
+}
+.warp-prompt small {
+  font-size: 11px;
+  color: #a9cfff;
+}
+.warp-prompt kbd {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #140a33;
+  background: #9ce9ff;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+}
+@keyframes warp-glow {
+  50% {
+    box-shadow: inset 0 0 0 2px #9ce9ff, inset 0 0 0 3px #140a33, 0 0 34px rgba(110, 200, 255, 0.85), 0 6px 16px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.warp-hint {
+  margin: 0 0 12px;
+  color: var(--ui-text-dim, #9fb4ac);
+  font-size: 13px;
+}
+.warp-list {
+  display: grid;
+  gap: 10px;
+}
+.warp-card {
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 8px 8px;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: #eaf8ff;
+  background: linear-gradient(90deg, rgba(43, 26, 110, 0.85), rgba(14, 30, 40, 0.85));
+  box-shadow: inset 0 0 0 1px rgba(110, 180, 255, 0.45);
+  transition: transform 0.12s, box-shadow 0.15s, filter 0.15s;
+}
+.warp-card:not(:disabled):hover {
+  transform: translateX(3px);
+  box-shadow: inset 0 0 0 2px #45b8ff, 0 0 18px rgba(69, 184, 255, 0.35);
+}
+.warp-card.here {
+  cursor: default;
+  filter: saturate(0.6) brightness(0.85);
+}
+.warp-thumb {
+  position: relative;
+  width: 96px;
+  height: 60px;
+  background: #0d1a14;
+  box-shadow: inset 0 0 0 1px #000;
+}
+.warp-thumb canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.warp-pin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, #e2fbff, #45b8ff 55%, #3a35b8);
+  box-shadow: 0 0 0 1px #140a33, 0 0 10px 3px rgba(80, 180, 255, 0.8);
+}
+.warp-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.warp-text b {
+  font-size: 16px;
+}
+.warp-text span {
+  font-size: 12px;
+  color: #a9cfff;
+}
+.warp-go {
+  font-weight: 700;
+  font-size: 13px;
+  padding: 6px 12px;
+  color: #140a33;
+  background: linear-gradient(180deg, #e2fbff, #45b8ff);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+}
+.warp-card.here .warp-go {
+  background: rgba(255, 255, 255, 0.15);
+  color: #cfe3ff;
+}
+@media (max-width: 760px), (max-height: 500px) {
+  .warp-prompt {
+    bottom: 96px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .warp-prompt.show,
+  .mm-warp i {
+    animation: none;
+  }
+}
+
+/* the warp's screen transition (fx/veil.ts): over the game, under the HUD */
+.warp-veil {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+  image-rendering: pixelated;
+  display: none;
+}
+.warp-veil.on {
+  display: block;
+}
+.warp-gate {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  color: #eaf8ff;
+  background: linear-gradient(90deg, rgba(58, 53, 184, 0.55), rgba(20, 10, 51, 0.75));
+  box-shadow: inset 0 0 0 1px rgba(156, 233, 255, 0.35);
+}
+.warp-gate .wg-seal {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle, #3f74e8 0%, #2b1a6e 70%);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  opacity: 0.7;
+}
+.warp-go.locked {
+  background: rgba(255, 255, 255, 0.12);
+  color: #a9cfff;
+}
+/* a door's prompt: warm gold instead of the warp's blue */
+.warp-prompt.door-prompt {
+  background: linear-gradient(180deg, rgba(120, 78, 22, 0.96), rgba(46, 26, 8, 0.96));
+  box-shadow: inset 0 0 0 2px var(--ui-gold, #e8c46a), inset 0 0 0 3px #2a1606, 0 0 18px rgba(255, 200, 90, 0.45), 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+.warp-prompt.door-prompt.show {
+  animation: none;
+}
+.warp-prompt.door-prompt .wp-ico {
+  background: radial-gradient(circle, #fff1b0 0%, #d8962a 60%, #5a3208 100%);
+}
+.warp-prompt.door-prompt small {
+  color: #f3dca0;
+}
+.warp-prompt.door-prompt kbd {
+  background: #ffe39a;
+  color: #3a2504;
+}
+.warp-maps {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.warp-gate {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: transform 0.12s, filter 0.15s;
+}
+.warp-gate:not(:disabled):hover {
+  transform: translateX(3px);
+  filter: brightness(1.12);
+}
+.warp-gate.locked {
+  cursor: default;
+  filter: saturate(0.5) brightness(0.8);
+}
+.warp-gate .warp-go:not(.locked) {
+  background: linear-gradient(180deg, #e2fbff, #45b8ff);
+  color: #140a33;
+}
+
+/* ================================================================== people (NPCs) */
+/* the name over each one's head: tap it to talk */
+.npc-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -100%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  will-change: transform;
+  transition: opacity 0.2s;
+}
+.npc-tag.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.npc-tag .nt-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffe9a8;
+  text-shadow: -1px 0 #2a1a04, 1px 0 #2a1a04, 0 -1px #2a1a04, 0 1px #2a1a04, 0 2px 3px rgba(0, 0, 0, 0.6);
+}
+.npc-tag:hover .nt-name {
+  color: #fff;
+}
+/* a little speech bubble: there's something to say */
+.npc-tag .nt-bubble {
+  position: relative;
+  width: 11px;
+  height: 8px;
+  background: #fff6d8;
+  box-shadow: 0 0 0 1px #2a1a04;
+  clip-path: polygon(1px 0, 10px 0, 11px 1px, 11px 6px, 10px 7px, 5px 7px, 3px 9px, 3px 7px, 1px 7px, 0 6px, 0 1px);
+}
+
+/* "talk to ..." */
+.talk-prompt .tk-bubble {
+  display: flex !important;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+}
+.talk-prompt .tk-bubble i {
+  width: 4px;
+  height: 4px;
+  background: #3a2504;
+  animation: tk-dots 1.2s ease-in-out infinite;
+}
+.talk-prompt .tk-bubble i:nth-child(2) { animation-delay: 0.15s; }
+.talk-prompt .tk-bubble i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes tk-dots { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-3px); } }
+
+/* the conversation box */
+.talk {
+  --px: 4px;
+  position: absolute;
+  left: 50%;
+  bottom: 112px;
+  width: min(600px, calc(100vw - 24px));
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 18px 14px 14px;
+  background: var(--ui-glass);
+  box-shadow: inset 0 0 0 2px var(--ui-gold), inset 0 0 0 4px #2a1a04, 0 10px 30px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0;
+  transform: translate(-50%, 18px);
+  transition: opacity 0.18s, transform 0.25s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.talk.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.talk.closing {
+  opacity: 0;
+  transform: translate(-50%, 10px);
+}
+.tk-face {
+  flex: none;
+  width: 84px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, #3d6a70, #10272d 75%);
+  box-shadow: inset 0 0 0 2px var(--ui-gold-2), inset 0 0 0 3px #1a1004;
+}
+.tk-face canvas {
+  width: 78px;
+  height: 78px;
+  image-rendering: pixelated;
+}
+.tk-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tk-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tk-name {
+  font-size: 18px;
+  background: linear-gradient(180deg, #fffbe8, #ffe7a3 45%, #d9a548);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 #2a1a04);
+}
+.tk-role {
+  font-size: 12px;
+  color: var(--ui-dim);
+}
+.tk-text {
+  min-height: 2.6em;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ui-ink);
+}
+.tk-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.tk-actions:empty {
+  display: none;
+}
+.tk-btn {
+  --px: 3px;
+  padding: 5px 16px;
+  border: 0;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--ui-ink);
+  background: linear-gradient(180deg, #2c5a62, #12323a);
+  box-shadow: inset 0 0 0 1px var(--ui-gold-2), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+}
+.tk-btn.tk-go {
+  color: #2a1a04;
+  font-weight: 600;
+  background: linear-gradient(180deg, #fff1b8, var(--ui-gold) 45%, var(--ui-gold-2));
+}
+.tk-btn:hover {
+  filter: brightness(1.12);
+}
+.tk-btn:active {
+  transform: translateY(1px);
+}
+/* there's more to say */
+.tk-more {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  width: 10px;
+  height: 6px;
+  background: var(--ui-gold);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  opacity: 0;
+}
+.tk-more.on {
+  opacity: 1;
+  animation: tk-bob 0.9s ease-in-out infinite;
+}
+@keyframes tk-bob { 50% { transform: translateY(3px); } }
+@media (max-height: 500px), (max-width: 760px) {
+  .talk {
+    bottom: 92px;
+    padding: 10px 12px 10px 10px;
+    gap: 10px;
+  }
+  .tk-face {
+    width: 64px;
+    height: 64px;
+  }
+  .tk-face canvas {
+    width: 58px;
+    height: 58px;
+  }
+  .tk-text {
+    font-size: 14px;
+  }
+}
+
+/* ================================================================== hero list: the filter
+   Folded by default to one bar: the filter button (with how many are on), what's on as small tags, how many are
+   shown, clear. Open: one row per kind (class, rarity, element, race), every option the same width in a grid. */
+.hero-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(240, 207, 116, 0.18);
+}
+.hf-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-height: 32px;
+}
+.hf-toggle {
+  flex: none;
+  padding: 5px 10px;
+  font-weight: 600;
+  color: var(--ui-ink);
+}
+.hf-funnel {
+  width: 12px;
+  height: 11px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 0, 62% 48%, 62% 100%, 38% 84%, 38% 48%);
+}
+.hf-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  color: #2a1a04;
+  background: var(--ui-gold);
+}
+.hf-toggle.on .hf-count {
+  color: var(--ui-gold-hi);
+  background: #2a1a04;
+}
+.hf-caret {
+  font-size: 10px;
+  opacity: 0.8;
+}
+/* what's on: its own line under the bar's buttons */
+.hf-tags {
+  order: 5;
+  flex: 1 0 100%;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.hf-tags:empty {
+  display: none;
+}
+.hf-tags::-webkit-scrollbar {
+  display: none;
+}
+.hf-tag {
+  --px: 2px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border: 0;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ui-ink);
+  cursor: pointer;
+  background: rgba(240, 207, 116, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(240, 207, 116, 0.4);
+}
+.hf-tag b {
+  font-size: 12px;
+  color: var(--ui-gold);
+}
+.hf-tag .px-icon {
+  width: 16px;
+  height: 16px;
+}
+.hf-shown {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.hf-clear {
+  color: var(--ui-dim);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(156, 188, 181, 0.3);
+}
+.hf-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(156, 188, 181, 0.16);
+}
+.hf-row {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+.hf-label {
+  padding-top: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-gold);
+}
+/* the options: even tiles - the icon over its name - as many across as fit */
+.hf-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 5px;
+}
+.hf-opt {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 3px 4px;
+  font-size: 11.5px;
+  line-height: 1.15;
+  text-align: center;
+  /* a long name goes onto a second line rather than being cut */
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+.hf-opt .px-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+.hf-opt .rar-dot,
+.hf-tag .rar-dot {
+  flex: none;
+}
+.hf-opt .rar-dot {
+  width: 14px;
+  height: 14px;
+  margin: 4px 0;
+}
+.hf-check {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 4px 0;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+.hf-check.on {
+  background: radial-gradient(circle, currentColor 0 3px, transparent 3.5px);
+}
+@media (max-width: 520px) {
+  .hf-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .hf-label {
+    padding-top: 0;
+  }
+  .hf-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .hf-opt {
+    font-size: 10.5px;
+  }
+  .hf-panel {
+    padding: 8px;
+  }
+}
+.chip {
+  --px: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 6px;
+  border: 0;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--ui-dim);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.02));
+  box-shadow: inset 0 0 0 1px rgba(156, 188, 181, 0.25);
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.chip:hover {
+  color: var(--ui-ink);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+}
+.chip.on {
+  color: #2a1a04;
+  font-weight: 600;
+  background: linear-gradient(180deg, var(--ui-gold-hi), var(--ui-gold) 45%, var(--ui-gold-2));
+  box-shadow: inset 0 -2px 0 rgba(122, 90, 30, 0.6);
+}
+.chip .px-icon {
+  width: 20px;
+  height: 20px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5));
+}
+.hf-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hf-chart {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--ui-dim);
+  margin-right: auto;
+}
+.hf-chart i {
+  width: 10px;
+}
+.hf-chart .px-icon {
+  width: 16px;
+  height: 16px;
+}
+.hero-card .hc-els {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.hero-card .hc-race {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+}
+.hero-card .hc-race .px-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ================================================================== heroes: rarity, cards, a hero's page */
+.r-rare { --rar: #4aa8ff; }
+.r-epic { --rar: #b46bff; }
+.r-legend { --rar: #ffb52e; }
+.r-mythic { --rar: #ff4d6d; }
+.rar-tag {
+  --px: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 15px;
+  padding: 0 6px;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+.rar-tag.rare { background: linear-gradient(180deg, #7cc4ff, #2a7ad8); }
+.rar-tag.epic { background: linear-gradient(180deg, #d3a2ff, #7a3ad0); }
+.rar-tag.legend { background: linear-gradient(180deg, #ffd879, #d8860c); }
+.rar-tag.mythic { background: linear-gradient(180deg, #ff8fa2, #c81d44); }
+.rar-dot {
+  width: 10px;
+  height: 10px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.rar-dot.rare { background: #4aa8ff; }
+.rar-dot.epic { background: #b46bff; }
+.rar-dot.legend { background: #ffb52e; }
+.rar-dot.mythic { background: #ff4d6d; }
+.star-row {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+}
+.star-row i {
+  width: 11px;
+  height: 11px;
+  background: rgba(255, 255, 255, 0.16);
+  clip-path: polygon(50% 0, 62% 36%, 100% 38%, 70% 61%, 80% 100%, 50% 77%, 20% 100%, 30% 61%, 0 38%, 38% 36%);
+}
+.star-row i.on {
+  background: linear-gradient(180deg, #fff3b0, #ffc23a);
+  filter: drop-shadow(0 0 3px rgba(255, 200, 60, 0.7));
+}
+.hero-pic {
+  image-rendering: pixelated;
+  display: block;
+}
+
+.hero-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+button.hero-card {
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px var(--rar), inset 0 0 0 3px rgba(0, 0, 0, 0.5), inset 0 0 26px color-mix(in srgb, var(--rar) 25%, transparent);
+}
+button.hero-card:hover {
+  box-shadow: inset 0 0 0 2px var(--rar), inset 0 0 0 3px rgba(0, 0, 0, 0.5), inset 0 0 34px color-mix(in srgb, var(--rar) 45%, transparent);
+}
+.hero-card .hc-top {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hero-card .art {
+  height: 84px;
+}
+.hero-card .art::before {
+  background: radial-gradient(circle, color-mix(in srgb, var(--rar) 40%, transparent), transparent 68%);
+}
+.hero-card .hc-face {
+  width: 90px;
+  height: 90px;
+  position: relative;
+}
+
+.hero-detail {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 18px;
+}
+.hd-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  /* the hero stays in view while its stats, skills and talents scroll past */
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+.hd-back {
+  align-self: flex-start;
+}
+.hd-stage {
+  width: 192px;
+  height: 192px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(ellipse 60% 16% at 50% 88%, rgba(0, 0, 0, 0.45), transparent 70%),
+    radial-gradient(circle at 50% 55%, color-mix(in srgb, var(--rar) 35%, transparent), transparent 65%);
+}
+.hd-full {
+  width: 192px;
+  height: 192px;
+  animation: hd-breathe 2.6s ease-in-out infinite;
+}
+@keyframes hd-breathe { 50% { transform: translateY(-3px); } }
+.hd-name {
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(180deg, #fffbe8, #ffe7a3 45%, #d9a548);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 #2a1a04);
+}
+.hd-title {
+  font-size: 13px;
+  color: var(--ui-dim);
+}
+.hd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.hd-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  padding: 2px 8px 2px 4px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(156, 188, 181, 0.25);
+}
+.hd-tag .px-icon {
+  width: 18px;
+  height: 18px;
+}
+.hd-tag small {
+  color: var(--ui-faint);
+}
+.hd-left .star-row i {
+  width: 18px;
+  height: 18px;
+}
+.hd-right h4 {
+  margin: 14px 0 8px;
+  font-size: 14px;
+  color: var(--ui-gold);
+  border-bottom: 1px solid rgba(240, 207, 116, 0.2);
+  padding-bottom: 4px;
+}
+.hd-right h4:first-child {
+  margin-top: 0;
+}
+.hd-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px 14px;
+}
+.hd-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 3px 2px;
+  border-bottom: 1px dashed rgba(156, 188, 181, 0.15);
+}
+.hd-stat span {
+  color: var(--ui-dim);
+}
+.hd-gear {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.hd-slot {
+  --px: 4px;
+  aspect-ratio: 1;
+  max-width: 76px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(240, 207, 116, 0.35);
+  color: var(--ui-faint);
+}
+.hg-plus {
+  font-size: 22px;
+  line-height: 1;
+}
+.hd-slot small {
+  font-size: 11px;
+}
+.hd-trait {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ui-ink);
+}
+.hd-skill,
+.hd-talent {
+  --px: 3px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(156, 188, 181, 0.2);
+}
+.hs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.hs-head b {
+  font-size: 14px;
+}
+.hs-tag {
+  font-size: 11px;
+  padding: 0 6px;
+  line-height: 16px;
+  background: rgba(240, 207, 116, 0.18);
+  color: var(--ui-gold);
+}
+.hs-cost {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: #8fd8ff;
+}
+.hs-text {
+  font-size: 12.5px;
+  color: var(--ui-dim);
+  line-height: 1.5;
+}
+.hd-talent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  opacity: 0.55;
+}
+.hd-talent.on {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px var(--ui-gold);
+}
+.ht-c {
+  flex: none;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ui-gold);
+  width: 24px;
+}
+@media (max-width: 760px) {
+  .hero-detail {
+    grid-template-columns: 1fr;
+  }
+  .hd-left {
+    position: static;
+  }
+}
+
+/* ---------------------------------------------------------------- monsters */
+/* a monster's name over its head (mini-bosses' always; others' when you're near) */
+.mon-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  will-change: transform;
+  transition: opacity 0.2s;
+}
+.mon-tag.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.mon-tag .mt-lv,
+.mon-tag .mt-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffd2c4;
+  text-shadow: -1px 0 #2a0804, 1px 0 #2a0804, 0 -1px #2a0804, 0 1px #2a0804, 0 2px 3px rgba(0, 0, 0, 0.6);
+}
+.mon-tag .mt-lv {
+  color: #ffb08a;
+  font-size: 10px;
+}
+.mon-tag.boss {
+  flex-direction: column;
+  gap: 0;
+}
+.mon-tag.boss .mt-name {
+  font-size: 13px;
+  color: #ffe08a;
+}
+.mon-tag.boss .mt-lv {
+  order: 2;
+}
+.mon-tag .mt-boss {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 5px;
+  color: #fff4d6;
+  background: linear-gradient(180deg, #d8402c, #8a1a12);
+  box-shadow: 0 0 0 1px #2a0804, 0 0 6px rgba(255, 90, 40, 0.6);
+  clip-path: polygon(3px 0, calc(100% - 3px) 0, 100% 50%, calc(100% - 3px) 100%, 3px 100%, 0 50%);
+  animation: mt-boss 1.6s ease-in-out infinite;
+}
+@keyframes mt-boss { 50% { filter: brightness(1.3); } }
+.mon-tag:hover .mt-name {
+  color: #fff;
+}
+
+/* a monster's card */
+.md-stage {
+  background:
+    radial-gradient(ellipse 60% 16% at 50% 88%, rgba(0, 0, 0, 0.45), transparent 70%),
+    radial-gradient(circle at 50% 55%, rgba(255, 110, 70, 0.22), transparent 65%);
+}
+.monster-detail.is-boss .md-stage {
+  background:
+    radial-gradient(ellipse 60% 16% at 50% 88%, rgba(0, 0, 0, 0.45), transparent 70%),
+    radial-gradient(circle at 50% 55%, rgba(255, 60, 40, 0.4), transparent 65%);
+}
+.md-pic {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  animation: hd-breathe 2.6s ease-in-out infinite;
+}
+.md-boss {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  color: #fff4d6;
+  background: linear-gradient(180deg, #d8402c, #8a1a12);
+}
+.md-text {
+  max-width: 260px;
+  line-height: 1.5;
+}
+.md-fight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  color: var(--ui-dim);
+}
+.md-fight-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  color: #fff4d6;
+  background: linear-gradient(180deg, #d8402c, #8a1a12);
+}
+.md-fight-btn:disabled {
+  filter: grayscale(0.7) brightness(0.8);
+  cursor: not-allowed;
+}
+
+/* the team panel */
+.tm-slots {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+.tm-slot {
+  min-height: 130px;
+  justify-content: center;
+  align-items: center;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.tm-slot.empty {
+  cursor: default;
+}
+.tm-plus {
+  font-size: 30px;
+  line-height: 1;
+  color: var(--ui-faint);
+}
+.tm-face {
+  width: 60px;
+  height: 60px;
+  image-rendering: pixelated;
+}
+.tm-h {
+  margin: 14px 0 6px;
+}
+.tm-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tm-pick .tm-face {
+  width: 30px;
+  height: 30px;
+}
+/* the special team: a violet edge, a narrower row */
+.tm-special {
+  grid-template-columns: repeat(2, minmax(110px, 160px));
+}
+.tm-slot.special {
+  box-shadow: inset 0 0 0 2px #9a6aff, 0 0 12px rgba(154, 106, 255, 0.35);
+}
+.tm-pick.special {
+  box-shadow: inset 0 0 0 1px #9a6aff;
+}
+
+/* a screen transition (ui/transition.ts): its 320 x 180 pixels stretched over everything */
+.screen-wipe {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  image-rendering: pixelated;
+  z-index: 100000;
+}
+
+/* ================================================================== the polish layer (every screen) */
+/* a soft cinematic vignette over the world, under the menus */
+body:not(.in-battle) #ui::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(4, 10, 14, 0.42) 100%);
+  pointer-events: none;
+  z-index: -1;
+}
+/* a gold sheen sweeps across the HUD's plates now and then */
+.dock > .fill,
+.tracker > .fill,
+.minimap > .fill {
+  position: relative;
+  overflow: hidden;
+}
+.dock > .fill::after,
+.tracker > .fill::after,
+.minimap > .fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 240, 200, 0.18) 50%, transparent 60%);
+  background-size: 300% 100%;
+  animation: sheen 7s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 4;
+}
+.tracker > .fill::after { animation-delay: 2.3s; }
+.minimap > .fill::after { animation-delay: 4.6s; }
+@keyframes sheen {
+  0%, 70% { background-position: 150% 0; }
+  100% { background-position: -50% 0; }
+}
+/* buttons: a little glow when you point at them, and they give when pressed */
+.btn-ico:active {
+  transform: translateY(0) scale(0.9);
+}
+.btn-ico:hover .tile {
+  filter: brightness(1.12) drop-shadow(0 0 6px rgba(255, 215, 90, 0.55));
+}
+.btn-ico .tile {
+  transition: filter 0.15s;
+}
+.btn:not(:disabled):active {
+  transform: translateY(2px) scale(0.97);
+}
+.btn:not(:disabled):hover {
+  filter: brightness(1.12) drop-shadow(0 0 6px rgba(127, 245, 220, 0.4));
+}
+.btn.gold:not(:disabled):hover {
+  filter: brightness(1.1) drop-shadow(0 0 8px rgba(255, 215, 90, 0.55));
+}
+.play .txt {
+  position: relative;
+  overflow: hidden;
+}
+.play .txt::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.4) 50%, transparent 60%);
+  background-size: 300% 100%;
+  animation: sheen 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.play {
+  animation: play-breathe 2.8s ease-in-out infinite;
+}
+@keyframes play-breathe { 50% { filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45)) drop-shadow(0 0 22px rgba(47, 211, 180, 0.6)); } }
+/* panels: the title glows, the crest gleams, things inside come in one after another, cards lift */
+.panel-head h2 {
+  background: linear-gradient(180deg, #fffbe8, #ffe7a3 45%, #d9a548);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 #2a1a04) drop-shadow(0 0 8px rgba(255, 200, 80, 0.3));
+}
+.panel-head .emblem {
+  animation: emblem-glow 3s ease-in-out infinite;
+}
+@keyframes emblem-glow { 50% { filter: drop-shadow(0 0 8px rgba(255, 215, 90, 0.7)); } }
+.x-btn {
+  transition: transform 0.18s cubic-bezier(0.3, 1.6, 0.4, 1), filter 0.15s;
+}
+.x-btn:hover {
+  /* just a little bigger - no turning round */
+  transform: scale(1.12);
+  filter: brightness(1.15);
+}
+.tab {
+  transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+.tab:active {
+  transform: translateY(1px);
+}
+.tab.on {
+  filter: drop-shadow(0 0 6px rgba(255, 215, 90, 0.45));
+}
+.panel-body .grid > *,
+.panel-body .list > *,
+.panel-body .hero-grid > * {
+  animation: body-in 0.32s ease-out both;
+}
+.panel-body .grid > :nth-child(2), .panel-body .hero-grid > :nth-child(2) { animation-delay: 0.03s; }
+.panel-body .grid > :nth-child(3), .panel-body .hero-grid > :nth-child(3) { animation-delay: 0.06s; }
+.panel-body .grid > :nth-child(4), .panel-body .hero-grid > :nth-child(4) { animation-delay: 0.09s; }
+.panel-body .grid > :nth-child(5), .panel-body .hero-grid > :nth-child(5) { animation-delay: 0.12s; }
+.panel-body .grid > :nth-child(6), .panel-body .hero-grid > :nth-child(6) { animation-delay: 0.15s; }
+.panel-body .grid > :nth-child(n + 7), .panel-body .hero-grid > :nth-child(n + 7) { animation-delay: 0.18s; }
+.card,
+.hero-card,
+.item-row {
+  transition: transform 0.16s cubic-bezier(0.3, 1.5, 0.4, 1), filter 0.16s, box-shadow 0.16s;
+}
+.card:hover,
+.hero-card:hover {
+  transform: translateY(-3px);
+  filter: brightness(1.08) drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
+}
+.item-row:hover {
+  filter: brightness(1.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock > .fill::after, .tracker > .fill::after, .minimap > .fill::after, .play .txt::after, .bd-card::after, .br-rays, .play, .panel-head .emblem { animation: none !important; }
 }

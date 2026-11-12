@@ -2,6 +2,7 @@ import * as Phaser from 'phaser';
 import './style.css';
 import { BootScene } from './scenes/BootScene';
 import { WorldScene } from './scenes/WorldScene';
+import { BattleScene } from './scenes/BattleScene';
 
 // Render at the screen's real pixel density (capped at 2 for speed) so the
 // pixel art stays sharp on phones and iPads, then shrink the canvas back to CSS size.
@@ -22,7 +23,7 @@ const game = new Phaser.Game({
     zoom: 1 / DPR,
   },
   input: { activePointers: 2 },
-  scene: [BootScene, WorldScene],
+  scene: [BootScene, WorldScene, BattleScene],
 });
 
 window.addEventListener('resize', () => {

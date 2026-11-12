@@ -1,6 +1,7 @@
+import { TEX } from '../art/texPrefix';
 import * as Phaser from 'phaser';
 import { makeCanvas, rng } from '../art/pixel';
-import { COLS, ROWS, T, TILE, vertexAt, waterAt, type MeadowMap } from './meadowMap';
+import { T, TILE, vertexAt, waterAt, type MeadowMap } from './meadowMap';
 
 /** How often the water surface is redrawn - with continuous time, 30 fps like pixelfx. */
 const WATER_FPS = 30;
@@ -230,8 +231,6 @@ interface LilyPad {
   vx: number;
   vy: number;
   r: number;
-  spin: number;
-  angle: number;
   seed: number;
 }
 
@@ -256,18 +255,18 @@ export class Ponds {
     const g = ground.getContext('2d', { willReadFrequently: true })!;
     this.findPonds().forEach((box, i) => {
       const src = g.getImageData(box.x, box.y, box.w, box.h).data;
-      this.surfaces.push(new PondSurface(scene, `pond${i}`, box, src, this.reflections(box)));
+      this.surfaces.push(new PondSurface(scene, `${TEX}pond${i}`, box, src, this.reflections(box)));
     });
-    for (let i = 0; i < 6; i++) this.ripples.push(new Ripple(scene, `ripple${i}`, 14));
+    for (let i = 0; i < 6; i++) this.ripples.push(new Ripple(scene, `${TEX}ripple${i}`, 14));
   }
 
   /** Bounding boxes (px) of each body of water, from the terrain corners. */
   private findPonds(): { x: number; y: number; w: number; h: number }[] {
     const seen = new Set<number>();
     const boxes: { x: number; y: number; w: number; h: number }[] = [];
-    const W = COLS + 1;
-    for (let y = 0; y <= ROWS; y++) {
-      for (let x = 0; x <= COLS; x++) {
+    const W = this.map.cols + 1;
+    for (let y = 0; y <= this.map.rows; y++) {
+      for (let x = 0; x <= this.map.cols; x++) {
         if (seen.has(y * W + x) || vertexAt(this.map, x, y) !== T.Water) continue;
         let x0 = x, x1 = x, y0 = y, y1 = y;
         const stack = [[x, y]];
@@ -276,13 +275,13 @@ export class Ponds {
           const [cx, cy] = stack.pop()!;
           x0 = Math.min(x0, cx); x1 = Math.max(x1, cx); y0 = Math.min(y0, cy); y1 = Math.max(y1, cy);
           for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
-            if (nx < 0 || ny < 0 || nx > COLS || ny > ROWS || seen.has(ny * W + nx) || vertexAt(this.map, nx, ny) !== T.Water) continue;
+            if (nx < 0 || ny < 0 || nx > this.map.cols || ny > this.map.rows || seen.has(ny * W + nx) || vertexAt(this.map, nx, ny) !== T.Water) continue;
             seen.add(ny * W + nx);
             stack.push([nx, ny]);
           }
         }
         const px0 = Math.max(0, (x0 - 1) * TILE), py0 = Math.max(0, (y0 - 1) * TILE);
-        const px1 = Math.min(COLS * TILE, (x1 + 1) * TILE), py1 = Math.min(ROWS * TILE, (y1 + 1) * TILE);
+        const px1 = Math.min(this.map.cols * TILE, (x1 + 1) * TILE), py1 = Math.min(this.map.rows * TILE, (y1 + 1) * TILE);
         boxes.push({ x: px0, y: py0, w: px1 - px0, h: py1 - py0 });
       }
     }
@@ -298,7 +297,7 @@ export class Ponds {
       if (o.x + f.cutWidth < box.x || o.x - f.cutWidth > box.x + box.w || o.y + f.cutHeight < box.y || o.y - 4 > box.y + box.h) continue;
       rg.save();
       rg.translate(Math.round(o.x - box.x), Math.round(o.y - box.y));
-      rg.scale(1, -1);
+      rg.scale(o.flip ? -1 : 1, -1);
       rg.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, -Math.round(f.cutWidth / 2), -f.cutHeight, f.cutWidth, f.cutHeight);
       rg.restore();
     }
@@ -312,7 +311,7 @@ export class Ponds {
       image.setDepth(1.5);
       this.lilies.push({
         image, shade, ax: image.x, ay: image.y, x: image.x, y: image.y, vx: 0, vy: 0,
-        r: Math.max(image.width, image.height) * 0.46, spin: 0, angle: 0, seed: this.r() * 100,
+        r: Math.max(image.width, image.height) * 0.46, seed: this.r() * 100,
       });
     }
   }
@@ -360,9 +359,8 @@ export class Ponds {
       const damp = Math.exp(-1.2 * dt);
       l.vx *= damp;
       l.vy *= damp;
-      l.spin *= Math.exp(-0.8 * dt);
     }
-    // pads never overlap: they push each other apart (and turn a little when they bump)
+    // pads never overlap: they push each other apart (they never turn: a pad only drifts)
     for (let i = 0; i < L.length; i++) {
       for (let j = i + 1; j < L.length; j++) {
         const a = L[i], b = L[j];
@@ -379,7 +377,6 @@ export class Ponds {
         if (rel < 0) {
           a.vx += nx * rel * 0.5; a.vy += ny * rel * 0.5;
           b.vx -= nx * rel * 0.5; b.vy -= ny * rel * 0.5;
-          a.spin += rel * 0.04; b.spin -= rel * 0.04;
         }
       }
     }
@@ -394,11 +391,9 @@ export class Ponds {
         l.vy = (l.ay - l.y) * 0.3;
         if (!this.afloat(l.x, l.y, l.r)) { l.x += (l.ax - l.x) * 0.1; l.y += (l.ay - l.y) * 0.1; }
       }
-      l.angle += l.spin * dt;
+      // it only drifts - up, down, left, right - and bobs a hair on the ripples; never turns or squashes
       const bob = Math.sin(t * 1.6 + l.seed * 3);
       l.image.setPosition(l.x, l.y + bob * 0.25);
-      l.image.setRotation(l.angle + Math.sin(t * 0.33 + l.seed) * 0.12);
-      l.image.setScale(1 + bob * 0.02, 1 - bob * 0.035);
       l.shade.setPosition(l.x + 1, l.y + 2);
     }
   }

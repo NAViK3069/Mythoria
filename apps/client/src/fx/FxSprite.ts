@@ -14,6 +14,8 @@ export interface FxSpriteOptions {
   additive?: boolean;
   /** Keep running when off screen (default false: paused while not visible). */
   always?: boolean;
+  /** Play from the very start (one-shots) instead of from a random point of the loop. */
+  fromStart?: boolean;
 }
 
 /**
@@ -53,9 +55,19 @@ export class FxSprite {
     this.always = !!o.always;
     this.image = scene.add.image(x, y, key).setOrigin((ox - this.crop[0]) / cw, (oy - this.crop[1]) / ch);
     if (o.additive) this.image.setBlendMode(Phaser.BlendModes.ADD);
-    // warm it up so it doesn't start from an empty first frame
-    this.fx.update(Math.random() * (meta.duration ?? 1));
+    // loops: warm up at a random point, so a row of them doesn't move in step
+    if (!o.fromStart) this.fx.update(Math.random() * (meta.duration ?? 1));
     this.redraw();
+  }
+
+  /** A one-shot that has played to its end. */
+  get finished(): boolean {
+    return this.fx.done();
+  }
+
+  /** Seconds since it started. */
+  get time(): number {
+    return this.fx.t;
   }
 
   update(dt: number): void {
@@ -98,4 +110,24 @@ export class FxSprite {
     this.image.destroy();
     this.texture.destroy();
   }
+}
+
+/**
+ * Draw a still effect (one that doesn't move, e.g. a torch stake drawn in code) once into a texture.
+ * Returns the origin as fractions, ready for setOrigin().
+ */
+export function bakeStill(scene: Phaser.Scene, key: string, mod: FxModule, opts: Record<string, unknown> = {}): [number, number] {
+  const [w, h] = mod.meta.size;
+  const [ox, oy] = mod.meta.origin ?? [w / 2, h / 2];
+  if (!scene.textures.exists(key)) {
+    const fx = createFx(mod, { ...opts, x: ox, y: oy });
+    const frame = createFrame(w, h);
+    fx.draw(frame);
+    const data = new ImageData(w, h);
+    composite(frame, data.data, null);
+    const tex = scene.textures.createCanvas(key, w, h)!;
+    (tex.getSourceImage() as HTMLCanvasElement).getContext('2d')!.putImageData(data, 0, 0);
+    tex.refresh();
+  }
+  return [ox / w, oy / h];
 }

@@ -1,0 +1,118 @@
+{
+ "slime": {
+  "w": 28,
+  "h": 24,
+  "anims": {
+   "idle": {
+    "n": 12,
+    "fps": 7
+   }
+  }
+ },
+ "slime_king": {
+  "w": 36,
+  "h": 38,
+  "anims": {
+   "idle": {
+    "n": 12,
+    "fps": 5
+   }
+  }
+ },
+ "hornbun": {
+  "w": 30,
+  "h": 31,
+  "anims": {
+   "idle": {
+    "n": 12,
+    "fps": 7
+   }
+  }
+ },
+ "hornbun_chief": {
+  "w": 40,
+  "h": 43,
+  "anims": {
+   "idle": {
+    "n": 4,
+    "fps": 4
+   }
+  }
+ },
+ "shroom": {
+  "w": 22,
+  "h": 29,
+  "anims": {
+   "idle": {
+    "n": 6,
+    "fps": 6
+   },
+   "move": {
+    "n": 8,
+    "fps": 10
+   }
+  }
+ },
+ "shroom_king": {
+  "w": 36,
+  "h": 43,
+  "anims": {
+   "idle": {
+    "n": 1,
+    "fps": 1
+   },
+   "move": {
+    "n": 8,
+    "fps": 7
+   }
+  }
+ },
+ "sapling": {
+  "w": 26,
+  "h": 29,
+  "anims": {
+   "idle": {
+    "n": 12,
+    "fps": 6
+   },
+   "move": {
+    "n": 8,
+    "fps": 10
+   }
+  }
+ },
+ "treant_elder": {
+  "w": 38,
+  "h": 50,
+  "anims": {
+   "idle": {
+    "n": 10,
+    "fps": 5
+   },
+   "move": {
+    "n": 8,
+    "fps": 7
+   }
+  }
+ },
+ "bee": {
+  "w": 28,
+  "h": 27,
+  "anims": {
+   "idle": {
+    "n": 4,
+    "fps": 16
+   }
+  }
+ },
+ "bee_queen": {
+  "w": 40,
+  "h": 36,
+  "anims": {
+   "idle": {
+    "n": 4,
+    "fps": 14
+   }
+  }
+ }
+}

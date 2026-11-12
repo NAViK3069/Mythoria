@@ -29,9 +29,15 @@ export function registerPanel(id: string, def: PanelDef): void {
   registry.set(id, def);
 }
 
+/** Other things on screen that hold the game still while they're up (a conversation). */
+const blockers: (() => boolean)[] = [];
+export function addBlocker(open: () => boolean): void {
+  blockers.push(open);
+}
+
 /** Is a panel open? The game ignores movement input while one is. */
 export function uiBlocking(): boolean {
-  if (current || rewardOpen()) return true;
+  if (current || rewardOpen() || blockers.some((b) => b())) return true;
   const a = document.activeElement;
   return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
 }

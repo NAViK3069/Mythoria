@@ -7,7 +7,8 @@ Mythoria/
 │  │  ├─ public/assets/   asset ที่ export แล้ว (sprite sheet, tilemap, audio)
 │  │  └─ src/
 │  │     ├─ scenes/       Boot, World (สำรวจแมพ), Battle, UI
-│  │     ├─ world/        การเดิน, กล้อง, encounter, NPC
+│  │     ├─ world/        การเดิน, กล้อง, แมพ, สัตว์เล็ก (Critters: ผีเสื้อ, Animals: แมว กระรอก นกกระจอก), encounter, NPC
+│  │     ├─ fx/effects/   เอฟเฟกต์ที่เราเขียนเอง (ผีเสื้อ, ไฟ) — โค้ดล้วน ไม่มีไฟล์ภาพ
 │  │     ├─ battle/       แสดงผลการต่อสู้ (เรียก packages/combat)
 │  │     ├─ ui/           เมนู, HUD, ปุ่มทัช
 │  │     ├─ input/        รวม touch / mouse / keyboard

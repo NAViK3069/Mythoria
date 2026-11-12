@@ -23,8 +23,8 @@ export const FOOT_REACH = 1.8;
 export const FOOT_LIFT = 1.6;
 
 /** Where the floating hands rest, in feet-local pixels (facing right, +y down). */
-export const HAND_FRONT = { x: 8.5, y: -8.5 };
-export const HAND_BACK = { x: -7, y: -9 };
+export const HAND_FRONT = { x: 8, y: -8 };
+export const HAND_BACK = { x: -7.5, y: -8.5 };
 
 /** A critically-damped-ish spring for one number: smooth follow with a little overshoot. */
 export class Spring {

@@ -9,6 +9,10 @@ import './panels/heroes';
 import './panels/social';
 import { loginGiftReady } from './panels/play';
 import { fmt, glyph, GLYPH_PLUS, h, icon, toast } from './dom';
+
+/** The minimap's fold button's arrow (points up when open: "fold away"). */
+const GLYPH_CHEVRON_UP = ['...##...', '..####..', '.##..##.', '##....##'];
+const MM_FOLD_KEY = 'mythoria.minimap.folded';
 import { frame, openPanel, registerPanel } from './Modal';
 import { avatar } from './panels/common';
 import { changed, claimableQuests, onChange, player, progressQuests, unreadMail } from './store';
@@ -71,6 +75,11 @@ export interface MapInfo {
   height: number;
   /** Where the story quest leads (shown until it is done). */
   quest?: { id: string; x: number; y: number };
+  /** Warp pads. */
+  warps?: { x: number; y: number }[];
+  /** The map's name, and what kind of place it is (for the big map's note). */
+  name?: string;
+  sub?: string;
 }
 
 export interface Hud {
@@ -80,12 +89,17 @@ export interface Hud {
   reached(place: 'shrine'): void;
   /** Give the minimap its picture. */
   attachMap(info: MapInfo): void;
+  /** How far (CSS px) the menus reach in from each edge of the screen, across its middle - what the
+   * camera has to be able to look past at the edges of the map. */
+  insets(): { top: number; bottom: number; left: number; right: number };
   /** Every frame: where the master is and what the camera sees (world px). */
   track(x: number, y: number, facing: 1 | -1, view: { x: number; y: number; width: number; height: number }): void;
   /** The big title when entering an area. */
   announceArea(name: string, sub?: string): void;
   /** Every frame: where the master's head is on screen (CSS px), for the name plate. */
   placeName(x: number, y: number): void;
+  /** Hide the name plate (while the hero is mid-warp). */
+  nameVisible(on: boolean): void;
 }
 
 // The latest map + position, shared with the full-map panel.
@@ -105,13 +119,15 @@ function mapLayer(info: MapInfo, cls: string) {
   const view = h('div', { class: 'mm-view', style: 'display:none' });
   const quest = h('div', { class: 'mm-quest' }, icon('quest', 20));
   const dot = h('div', { class: 'mm-me' }, h('i'));
-  const box = h('div', { class: `mm-map ${cls}` }, canvas, view, quest, dot);
+  const warps = (info.warps ?? []).map(() => h('div', { class: 'mm-warp', title: 'แท่นวาป' }, h('i')));
+  const box = h('div', { class: `mm-map ${cls}` }, canvas, view, ...warps, quest, dot);
   box.style.aspectRatio = `${info.width} / ${info.height}`;
   const place = (el: HTMLElement, x: number, y: number) => {
     el.style.left = `${(x / info.width) * 100}%`;
     el.style.top = `${(y / info.height) * 100}%`;
   };
   if (info.quest) place(quest, info.quest.x, info.quest.y);
+  (info.warps ?? []).forEach((w, i) => place(warps[i], w.x, w.y));
   return {
     box,
     update(v?: { x: number; y: number; width: number; height: number }) {
@@ -146,7 +162,8 @@ registerPanel('worldmap', {
         h('div', { class: 'legend' },
           h('span', null, h('i', { class: 'lg-me' }), 'ตำแหน่งของคุณ'),
           h('span', null, icon('quest', 18), 'จุดหมายเควส'),
-          h('span', { class: 'note' }, 'ทุ่งหญ้า • พื้นที่สำรวจ'))),
+          h('span', null, h('i', { class: 'lg-warp' }), 'แท่นวาป'),
+          h('span', { class: 'note' }, [mapInfo.name, mapInfo.sub].filter(Boolean).join(' • ')))),
     );
   },
 });
@@ -163,10 +180,10 @@ export function createHud(getFps: () => number): Hud {
   const exp = h('i', { class: 'px-cut' });
   const expText = h('span', { class: 'exp-t num' });
   const av = avatar(64);
-  av.appendChild(lv);
+  // the level sits at the front of its EXP bar (the bar runs out from behind it), not on the picture
   const profile = h('div', { class: 'profile', onclick: () => openPanel('profile'), role: 'button', 'aria-label': 'โปรไฟล์' },
     av,
-    h('div', { class: 'who' }, name, h('div', { class: 'title' }, player.title), h('div', { class: 'exp-row' }, h('div', { class: 'bar px-cut' }, exp), expText)));
+    h('div', { class: 'who' }, name, h('div', { class: 'title' }, player.title), h('div', { class: 'exp-row' }, lv, h('div', { class: 'bar px-cut' }, exp), expText)));
   const trackText = h('div', { class: 'q' });
   const trackBar = h('i', { class: 'px-cut' });
   const trackKind = h('span', { class: 'kind' });
@@ -194,9 +211,33 @@ export function createHud(getFps: () => number): Hud {
 
   const mmSlot = h('div', { class: 'mm-slot' });
   const mmCoords = h('span', { class: 'num' });
-  const minimap = frame('minimap', mmSlot, h('div', { class: 'mm-label' }, h('b', null, 'ทุ่งหญ้า'), mmCoords));
+  const mmName = h('b', null, 'ทุ่งหญ้า');
+  // fold the map away (just its name strip stays) or open it again; remembered on this device
+  const mmFold = h('button', { class: 'mm-fold', 'aria-label': 'พับแผนที่' }, glyph(GLYPH_CHEVRON_UP));
+  const minimap = frame('minimap', mmSlot, h('div', { class: 'mm-label' }, mmName, mmCoords, mmFold));
   minimap.addEventListener('click', () => openPanel('worldmap'));
   minimap.title = 'เปิดแผนที่';
+  const setFolded = (folded: boolean) => {
+    minimap.classList.toggle('folded', folded);
+    mmFold.setAttribute('aria-label', folded ? 'กางแผนที่' : 'พับแผนที่');
+    mmFold.title = folded ? 'กางแผนที่' : 'พับแผนที่';
+    try {
+      localStorage.setItem(MM_FOLD_KEY, folded ? '1' : '0');
+    } catch {
+      /* storage blocked: it just won't be remembered */
+    }
+  };
+  let startFolded = false;
+  try {
+    startFolded = localStorage.getItem(MM_FOLD_KEY) === '1';
+  } catch {
+    /* ignore */
+  }
+  setFolded(startFolded);
+  mmFold.addEventListener('click', (e) => {
+    e.stopPropagation(); // folding isn't opening the world map
+    setFolded(!minimap.classList.contains('folded'));
+  });
   let mm: ReturnType<typeof mapLayer> | null = null;
 
   // ---- bottom: chat preview, dock, play
@@ -210,7 +251,7 @@ export function createHud(getFps: () => number): Hud {
     iconButton('friends', 'เพื่อน', 'friends'),
     iconButton('guild', 'กิลด์', 'guild'),
     iconButton('chat', 'แชท', 'chat'));
-  const play = h('button', { class: 'play', onclick: () => openPanel('modes') },
+  const play = h('button', { class: 'play', onclick: () => openPanel('modes'), title: 'โหมดเล่น', 'aria-label': 'โหมดเล่น' },
     h('div', { class: 'emblem' }, h('div', { class: 'ring' }), h('div', { class: 'core' }, icon('battle', 44))),
     h('div', { class: 'plate px-cut' },
       h('div', { class: 'txt' }, h('span', { class: 'big' }, 'โหมดเล่น'), h('span', { class: 'sub' }, 'ผจญภัย • PvP • บอสเรด'))));
@@ -275,8 +316,31 @@ export function createHud(getFps: () => number): Hud {
       changed();
       toast('เควสสำเร็จ: ไปถึงซากศาลเจ้าแล้ว!');
     },
+    insets() {
+      const W = window.innerWidth, H = window.innerHeight;
+      const out = { top: 0, bottom: 0, left: 0, right: 0 };
+      for (const el of [profile, tracker, wallet, system, side, minimap, chatPeek, dock, play]) {
+        // where layout puts it (not where it is mid-slide: the menus slide in when the HUD appears)
+        let x = 0, y = 0;
+        for (let e: HTMLElement | null = el; e && e !== root; e = e.offsetParent as HTMLElement | null) (x += e.offsetLeft), (y += e.offsetTop);
+        const r = { left: x, top: y, right: x + el.offsetWidth, bottom: y + el.offsetHeight };
+        if (r.right === r.left || r.bottom === r.top) continue;
+        // in the middle of the top or bottom edge
+        if (r.right > W * 0.3 && r.left < W * 0.7) {
+          if (r.top < H / 2) out.top = Math.max(out.top, r.bottom);
+          else out.bottom = Math.max(out.bottom, H - r.top);
+        }
+        // in the middle of the left or right edge
+        if (r.bottom > H * 0.3 && r.top < H * 0.7) {
+          if (r.left < W / 2) out.left = Math.max(out.left, r.right);
+          else out.right = Math.max(out.right, W - r.left);
+        }
+      }
+      return out;
+    },
     attachMap(info) {
       mapInfo = info;
+      if (info.name) mmName.textContent = info.name;
       mm = mapLayer(info, 'mini');
       mmSlot.replaceChildren(mm.box);
       mm.update();
@@ -293,10 +357,14 @@ export function createHud(getFps: () => number): Hud {
       mm.update(view);
       mmCoords.textContent = `${Math.round(x / 16)}, ${Math.round(y / 16)}`;
     },
+    nameVisible(on) {
+      nameplate.style.visibility = on ? '' : 'hidden';
+    },
     placeName(x, y) {
       nameplate.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
     },
     announceArea(title, sub = '') {
+      mmName.textContent = title;
       areaBanner.replaceChildren(
         h('div', { class: 'ab-line' }),
         h('div', { class: 'ab-title' }, title),

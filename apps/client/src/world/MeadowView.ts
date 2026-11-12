@@ -1,13 +1,14 @@
+import { TEX } from '../art/texPrefix';
 import * as Phaser from 'phaser';
 import { makeCanvas, rng } from '../art/pixel';
 import { gradeCanvas } from '../art/grade';
 import { Ponds } from './Ponds';
-import { COLS, ROWS, T, TILE, vertexAt, type MeadowMap, type Placed } from './meadowMap';
+import { BEYOND, T, TILE, vertexAt, type Footprint, type MeadowMap, type Placed } from './meadowMap';
 
 interface TileTable {
   tiles: Record<string, [number, number]>;
 }
-export type TileLookup = Record<'water' | 'path' | 'dark', TileTable>;
+export type TileLookup = Record<'water' | 'path' | 'dark' | 'cobble', TileTable>;
 
 /** An object standing on the map (tree, wall, ...) that can fade when the player walks behind it. */
 export interface StandingThing {
@@ -19,6 +20,14 @@ export interface StandingThing {
 /** World px per texel of the light maps. */
 const LIGHT_RES = 4;
 
+/** Which way and how far shadows fall per px of height: the sun is high, up and to the left. */
+const SUN_X = 0.42;
+const SUN_Y = 0.24;
+
+/** Things that lie flat on the ground (a ring of stones, a map, kindling): drawn on the ground layer, no shadow. */
+export const FLAT = new Set(['smallpit', 'mapscroll', 'kindling']);
+
+
 /**
  * Draws the meadow: the ground (autotiled terrain + ground decals) and the cast
  * shadows are baked into two big textures once; the objects are sprites so
@@ -27,24 +36,33 @@ const LIGHT_RES = 4;
 export class MeadowView {
   readonly things: StandingThing[] = [];
   readonly lilies: Phaser.GameObjects.Image[] = [];
+  /** Everything that stands on an outline, for depth sorting against the player. */
+  private readonly standing: { foot: Footprint; image: Phaser.GameObjects.Image; bounds: Phaser.Geom.Rectangle; near: boolean }[] = [];
+  private readonly images = new Map<Placed, Phaser.GameObjects.Image>();
+  /** Things drawn with an object (a fire in its pit): they keep its depth, plus an offset. */
+  private readonly followers: { owner: Phaser.GameObjects.Image; image: Phaser.GameObjects.Image; offset: number }[] = [];
+
+  /** Its textures' name prefix (art/texPrefix.ts). */
+  private readonly px = TEX;
 
   constructor(private readonly scene: Phaser.Scene, private readonly map: MeadowMap) {
     const lookup = scene.cache.json.get('tiles') as TileLookup;
     const ground = gradeCanvas(this.bakeGround(lookup));
-    scene.textures.addCanvas('ground', ground);
-    scene.add.image(0, 0, 'ground').setOrigin(0, 0).setDepth(0);
+    scene.textures.addCanvas(this.px + 'ground', ground);
+    scene.add.image(0, 0, this.px + 'ground').setOrigin(0, 0).setDepth(0);
+    this.bakeBeyond(lookup);
     this.ponds = new Ponds(scene, map, ground);
     const [cast, contact] = this.bakeShadows();
-    scene.textures.addCanvas('shadows', cast);
-    scene.add.image(0, 0, 'shadows').setOrigin(0, 0).setDepth(1).setAlpha(0.26);
-    scene.textures.addCanvas('contact', contact);
-    scene.add.image(0, 0, 'contact').setOrigin(0, 0).setDepth(1.1).setAlpha(0.3);
+    scene.textures.addCanvas(this.px + 'shadows', cast);
+    scene.add.image(0, 0, this.px + 'shadows').setOrigin(0, 0).setDepth(1).setAlpha(0.26);
+    scene.textures.addCanvas(this.px + 'contact', contact);
+    scene.add.image(0, 0, this.px + 'contact').setOrigin(0, 0).setDepth(1.1).setAlpha(0.3);
     // Light that belongs to the level: shade under the woods, warm sun pooling in the clearings.
     const [shade, sun] = this.bakeLight();
-    scene.textures.addCanvas('shade', shade)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
-    scene.add.image(0, 0, 'shade').setOrigin(0, 0).setScale(LIGHT_RES).setDepth(1.2).setBlendMode(Phaser.BlendModes.MULTIPLY);
-    scene.textures.addCanvas('sunlight', sun)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
-    this.sun = scene.add.image(0, 0, 'sunlight').setOrigin(0, 0).setScale(LIGHT_RES).setDepth(1.3).setBlendMode(Phaser.BlendModes.ADD);
+    scene.textures.addCanvas(this.px + 'shade', shade)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    scene.add.image(0, 0, this.px + 'shade').setOrigin(0, 0).setScale(LIGHT_RES).setDepth(1.2).setBlendMode(Phaser.BlendModes.MULTIPLY);
+    scene.textures.addCanvas(this.px + 'sunlight', sun)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    this.sun = scene.add.image(0, 0, this.px + 'sunlight').setOrigin(0, 0).setScale(LIGHT_RES).setDepth(1.3).setBlendMode(Phaser.BlendModes.ADD);
     this.placeObjects();
     this.ponds.adoptLilies(this.lilies);
   }
@@ -56,8 +74,8 @@ export class MeadowView {
 
   /** Low-resolution light maps (one texel = LIGHT_RES px), smoothed when drawn. */
   private bakeLight(): [HTMLCanvasElement, HTMLCanvasElement] {
-    const W = Math.ceil((COLS * TILE) / LIGHT_RES);
-    const H = Math.ceil((ROWS * TILE) / LIGHT_RES);
+    const W = Math.ceil((this.map.cols * TILE) / LIGHT_RES);
+    const H = Math.ceil((this.map.rows * TILE) / LIGHT_RES);
     const [shade, sg] = makeCanvas(W, H);
     const [sun, ug] = makeCanvas(W, H);
     sg.imageSmoothingEnabled = ug.imageSmoothingEnabled = true;
@@ -81,13 +99,28 @@ export class MeadowView {
     // warm sun pooling wherever the sky is open; dapples at the edge of the woods
     const r = rng(5);
     const nearestTree = (x: number, y: number) => trees.reduce((d, t) => Math.min(d, Math.hypot(t.x - x, t.y - 20 - y)), Infinity);
-    for (let y = 0; y < ROWS * TILE; y += 44) {
-      for (let x = 0; x < COLS * TILE; x += 44) {
+    for (let y = 0; y < this.map.rows * TILE; y += 44) {
+      for (let x = 0; x < this.map.cols * TILE; x += 44) {
         const px = x + (r() - 0.5) * 30, py = y + (r() - 0.5) * 30;
         const d = nearestTree(px, py);
         if (d > 95) blob(ug, px, py, 80, '205,255,215', 0.06);
         else if (d > 34 && r() < 0.5) blob(ug, px, py, 10 + r() * 8, '225,255,220', 0.15);
       }
+    }
+    // both fade out over the last few tiles before the map's edges: the ground past the edges has neither,
+    // so nothing stops in a line there
+    const FADE = 72 / LIGHT_RES;
+    for (const [g, light] of [[sg, false], [ug, true]] as const) {
+      const img = g.getImageData(0, 0, W, H);
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++) {
+          const k = Math.min(1, Math.min(x + 0.5, W - x - 0.5, y + 0.5, H - y - 0.5) / FADE);
+          if (k >= 1) continue;
+          const f = k * k * (3 - 2 * k), i = (y * W + x) * 4;
+          if (light) img.data[i + 3] *= f;
+          else for (let j = 0; j < 3; j++) img.data[i + j] = 255 - (255 - img.data[i + j]) * f;
+        }
+      g.putImageData(img, 0, 0);
     }
     return [shade, sun];
   }
@@ -97,29 +130,8 @@ export class MeadowView {
   }
 
   private bakeGround(lookup: TileLookup): HTMLCanvasElement {
-    const [c, g] = makeCanvas(COLS * TILE, ROWS * TILE);
-    const r = rng(77);
-    const src = { water: this.sourceOf('tiles_water'), path: this.sourceOf('tiles_path'), dark: this.sourceOf('tiles_dark') };
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
-        const corners = [vertexAt(this.map, x, y), vertexAt(this.map, x + 1, y), vertexAt(this.map, x, y + 1), vertexAt(this.map, x + 1, y + 1)];
-        let set: 'water' | 'path' | 'dark' = 'water';
-        let key = '1111'; // plain grass (grass is the water set's upper terrain)
-        if (corners.includes(T.Water)) key = corners.map((t) => (t === T.Water ? '0' : '1')).join('');
-        else if (corners.includes(T.Path)) (set = 'path'), (key = corners.map((t) => (t === T.Path ? '1' : '0')).join(''));
-        else if (corners.includes(T.Dark)) (set = 'dark'), (key = corners.map((t) => (t === T.Dark ? '1' : '0')).join(''));
-        const pos = lookup[set].tiles[key];
-        if (!pos) continue;
-        // Plain tiles get mirrored at random so the repeat doesn't show.
-        const plain = key === '1111' || key === '0000';
-        const flip = plain && r() < 0.5;
-        g.save();
-        g.translate(x * TILE + (flip ? TILE : 0), y * TILE);
-        if (flip) g.scale(-1, 1);
-        g.drawImage(src[set], pos[0], pos[1], TILE, TILE, 0, 0, TILE, TILE);
-        g.restore();
-      }
-    }
+    const [c, g] = makeCanvas(this.map.cols * TILE, this.map.rows * TILE);
+    this.drawTiles(g, lookup, 0, 0, this.map.cols, this.map.rows, 0, 0, (x, y) => vertexAt(this.map, x, y));
     // ground decals (flowers, tufts, pebbles), pixel aligned
     for (const d of this.map.decals) {
       const f = this.scene.textures.getFrame('meadow', d.frame);
@@ -129,99 +141,263 @@ export class MeadowView {
   }
 
   /**
-   * Shadows for a sun high overhead, a little to the upper left: each thing's own
-   * outline squashed flat onto the ground beneath it and nudged down-right, so what
-   * peeks out round its base is a soft shape that matches it (a round bush gets a
-   * round shadow, a tree a canopy-shaped pool). Plus a darker contact patch where
-   * it meets the ground. Both are crisp pixel shapes; overlapping shadows merge.
+   * The ground past the map's edges, BEYOND px all round (the camera may look a little past the edges, so
+   * the menus never cover what's at them): the edge's own terrain carried straight on - a road leaving the
+   * map keeps going - fading into the dark. Four strips, so the middle isn't drawn twice.
+   */
+  private bakeBeyond(lookup: TileLookup): void {
+    const B = BEYOND / TILE, C = this.map.cols, R = this.map.rows;
+    const vert = (x: number, y: number) => vertexAt(this.map, Math.max(0, Math.min(C, x)), Math.max(0, Math.min(R, y)));
+    const dark = [12, 24, 17];
+    const strips: [string, number, number, number, number][] = [
+      [this.px + 'beyond_n', -B, -B, C + B, 0],
+      [this.px + 'beyond_s', -B, R, C + B, R + B],
+      [this.px + 'beyond_w', -B, 0, 0, R],
+      [this.px + 'beyond_e', C, 0, C + B, R],
+    ];
+    for (const [key, x0, y0, x1, y1] of strips) {
+      const [c, g] = makeCanvas((x1 - x0) * TILE, (y1 - y0) * TILE);
+      this.drawTiles(g, lookup, x0, y0, x1, y1, -x0 * TILE, -y0 * TILE, vert);
+      // fading out the further it is from the map
+      const img = g.getImageData(0, 0, c.width, c.height);
+      for (let y = 0; y < c.height; y++)
+        for (let x = 0; x < c.width; x++) {
+          const wx = x + x0 * TILE, wy = y + y0 * TILE;
+          const d = Math.hypot(Math.max(0, -wx, wx - C * TILE), Math.max(0, -wy, wy - R * TILE));
+          const k = Math.min(1, d / BEYOND);
+          const a = 0.9 * k * k * (3 - 2 * k);
+          const i = (y * c.width + x) * 4;
+          for (let j = 0; j < 3; j++) img.data[i + j] += (dark[j] - img.data[i + j]) * a;
+        }
+      g.putImageData(img, 0, 0);
+      this.scene.textures.addCanvas(key, gradeCanvas(c));
+      this.scene.add.image(x0 * TILE, y0 * TILE, key).setOrigin(0, 0).setDepth(0);
+    }
+    this.edgeVeil();
+  }
+
+  /**
+   * Dark over the ground you can't walk on: a soft veil over everything at the edge of the world, from a
+   * little inside the map's edge (so the light and shade drawn on the map don't stop in a hard line, and
+   * the trees at the edge sink into the dark with the ground) to nearly black further out.
+   */
+  private edgeVeil(): void {
+    const W = this.map.cols * TILE, H = this.map.rows * TILE;
+    const RES = 8; // px per texel; drawn smoothed
+    const IN = 20; // starts this far inside the edge
+    const w = Math.ceil((W + 2 * BEYOND) / RES), h = Math.ceil((H + 2 * BEYOND) / RES);
+    const [c, g] = makeCanvas(w, h);
+    const img = g.createImageData(w, h);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const wx = x * RES + RES / 2 - BEYOND, wy = y * RES + RES / 2 - BEYOND;
+        // how far out past the line IN px inside the edge
+        const d = Math.hypot(Math.max(0, IN - wx, wx - (W - IN)), Math.max(0, IN - wy, wy - (H - IN)));
+        if (d <= 0) continue;
+        const k = Math.min(1, d / 96);
+        const i = (y * w + x) * 4;
+        img.data[i] = 8, img.data[i + 1] = 16, img.data[i + 2] = 12;
+        img.data[i + 3] = 255 * Math.min(0.94, Math.pow(k, 0.7));
+      }
+    g.putImageData(img, 0, 0);
+    this.scene.textures.addCanvas(this.px + 'edge_veil', c)!.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    // over the trees and animals at the edge, under the fireflies and the menus
+    this.scene.add.image(-BEYOND, -BEYOND, this.px + 'edge_veil').setOrigin(0, 0).setScale(RES).setDepth(9000);
+  }
+
+  /** Ground tiles for tiles x0..x1, y0..y1 (exclusive), drawn offset by (ox, oy), terrain from vert. */
+  private drawTiles(g: CanvasRenderingContext2D, lookup: TileLookup, x0: number, y0: number, x1: number, y1: number, ox: number, oy: number, vert: (x: number, y: number) => T): void {
+    const r = rng(77 + x0 * 7 + y0 * 13);
+    // the map's paved terrain is dirt paths (the meadow) or cobbles (the town)
+    const src = { water: this.sourceOf('tiles_water'), path: this.sourceOf('tiles_path'), dark: this.sourceOf('tiles_dark'), cobble: this.sourceOf('tiles_cobble') };
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const corners = [vert(x, y), vert(x + 1, y), vert(x, y + 1), vert(x + 1, y + 1)];
+        let set: 'water' | 'path' | 'dark' | 'cobble' = 'water';
+        let key = '1111'; // plain grass (grass is the water set's upper terrain)
+        if (corners.includes(T.Water)) key = corners.map((t) => (t === T.Water ? '0' : '1')).join('');
+        else if (corners.includes(T.Path)) (set = this.map.paved), (key = corners.map((t) => (t === T.Path ? '1' : '0')).join(''));
+        else if (corners.includes(T.Dark)) (set = 'dark'), (key = corners.map((t) => (t === T.Dark ? '1' : '0')).join(''));
+        const pos = lookup[set].tiles[key];
+        if (!pos) continue;
+        // Plain tiles get mirrored at random so the repeat doesn't show.
+        const plain = key === '1111' || key === '0000';
+        const flip = plain && r() < 0.5;
+        g.save();
+        g.translate(ox + x * TILE + (flip ? TILE : 0), oy + y * TILE);
+        if (flip) g.scale(-1, 1);
+        g.drawImage(src[set], pos[0], pos[1], TILE, TILE, 0, 0, TILE, TILE);
+        g.restore();
+      }
+    }
+  }
+
+  /**
+   * Shadows, cast by a sun high up to the upper left. In a 3/4 view every pixel of a picture is a point
+   * some height above the ground: its height is how far it sits above the line where the object meets
+   * the ground (the middle of its footprint, in its column). The sun throws that point down and to
+   * the right by its height - so a shadow starts at the object's own base and leans away from the
+   * light, long for a tall tree or post, a sliver for a log or a crate. Flat things cast none.
+   * Plus a darker contact patch on the footprint itself. Both are crisp pixel shapes; they merge.
    */
   private bakeShadows(): [HTMLCanvasElement, HTMLCanvasElement] {
-    const W = COLS * TILE, H = ROWS * TILE;
-    const [cast, cg] = makeCanvas(W, H);
-    const [contact, kg] = makeCanvas(W, H);
-    cg.imageSmoothingEnabled = true;
-    kg.imageSmoothingEnabled = true;
-    const sil = new Map<string, HTMLCanvasElement>();
-    const silhouette = (name: string) => {
-      let s = sil.get(name);
-      if (!s) {
-        const f = this.scene.textures.getFrame('meadow', name);
-        const [sc, sg] = makeCanvas(f.cutWidth, f.cutHeight);
-        sg.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, 0, 0, f.cutWidth, f.cutHeight);
-        sg.globalCompositeOperation = 'source-in';
-        sg.fillStyle = '#000000';
-        sg.fillRect(0, 0, f.cutWidth, f.cutHeight);
-        sil.set(name, (s = sc));
-      }
-      return s;
+    const W = this.map.cols * TILE, H = this.map.rows * TILE;
+    const mask = new Uint8Array(W * H);
+    const put = (x: number, y: number) => {
+      const X = Math.round(x), Y = Math.round(y);
+      if (X >= 0 && Y >= 0 && X < W && Y < H) mask[Y * W + X] = 1;
     };
-    // cast shadows: tall things throw a longer one; low things (rocks, props) barely any
-    const SQUASH: Partial<Record<Placed['kind'], number>> = { tree: 0.34, bush: 0.36, wall: 0.36, pillar: 0.3, rock: 0.28, prop: 0.32, decal: 0.3 };
-    cg.fillStyle = '#000000';
-    kg.fillStyle = '#000000';
+    // the pictures' solid pixels, read once per frame
+    const atlas = this.scene.textures.get('meadow');
+    const src = atlas.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    const [, ag] = makeCanvas(src.width, src.height);
+    ag.drawImage(src, 0, 0);
+    const pix = ag.getImageData(0, 0, src.width, src.height).data;
+    const solid = (frame: string, flip = false) => {
+      const f = atlas.get(frame);
+      const w = f.cutWidth;
+      return { w, h: f.cutHeight, at: (x: number, y: number) => pix[((f.cutY + y) * src.width + f.cutX + (flip ? w - 1 - x : x)) * 4 + 3] > 100 };
+    };
+
     for (const o of this.map.objects) {
-      if (!o.frame || o.kind === 'lily') continue;
-      const s = silhouette(o.frame);
-      if (o.shadow) {
-        const sh = Math.max(3, Math.round(s.height * (SQUASH[o.kind] ?? 0.36)));
-        const sw = s.width + 2;
-        const dx = o.kind === 'tree' ? Math.round(s.height * 0.07) + 1 : 1;
-        const dy = Math.round(sh * 0.3);
-        cg.drawImage(s, Math.round(o.x - sw / 2 + dx), Math.round(o.y - sh + dy), sw, sh);
-      }
-      // contact shadow: where it touches the ground. For trees, round the trunk; for everything
-      // else its own outline pressed flat and tucked right under its bottom edge, so it sits IN
-      // the grass instead of on a separate patch.
-      if (o.kind === 'tree') {
-        const f = o.foot;
-        if (f) {
-          kg.beginPath();
-          kg.ellipse(f.x + 1, f.y + f.hd * 0.45, f.hw + 2, f.hd + 1, 0, 0, Math.PI * 2);
-          kg.fill();
+      if (!o.frame || o.kind === 'lily' || o.shadow === false || FLAT.has(o.frame)) continue;
+      const pic = solid(o.frame, o.flip);
+      const left = Math.round(o.x) - Math.floor(pic.w / 2), top = Math.round(o.y) - pic.h;
+      const foot = o.kind !== 'bush' && o.kind !== 'tree' ? o.foot : undefined;
+      for (let x = 0; x < pic.w; x++) {
+        const wx = left + x;
+        // where this column meets the ground
+        let g: number;
+        if (o.kind === 'tree') g = Math.round(o.y) - 3;
+        else if (foot) g = (edgeAt(foot, wx, true) + edgeAt(foot, wx, false)) / 2;
+        else {
+          let b = pic.h - 1;
+          while (b > 0 && !pic.at(x, b)) b--;
+          g = top + b - 1;
         }
-      } else {
-        const ch = Math.max(2, Math.round(s.height * 0.16));
-        kg.drawImage(s, Math.round(o.x - s.width / 2 - 1), Math.round(o.y - ch + 2), s.width + 2, ch);
+        for (let y = 0; y < pic.h; y++) {
+          if (!pic.at(x, y)) continue;
+          const z = g - (top + y);
+          if (z <= 0) put(wx, top + y);
+          else put(wx + z * SUN_X, g + z * SUN_Y);
+        }
       }
     }
-    // keep them crisp: every pixel either in shadow or not
-    for (const [canvas, g] of [[cast, cg], [contact, kg]] as const) {
-      const img = g.getImageData(0, 0, canvas.width, canvas.height);
-      const d = img.data;
-      for (let i = 3; i < d.length; i += 4) d[i] = d[i] > 110 ? 255 : 0;
-      for (let i = 0; i < d.length; i += 4) {
-        d[i] = 12;
-        d[i + 1] = 30;
-        d[i + 2] = 22;
-      }
-      g.putImageData(img, 0, 0);
+    // the torch stakes and braziers drawn in code
+    for (const f of this.map.fires) {
+      if (f.kind !== 'torch' && f.kind !== 'brazier') continue;
+      const [hw, tall] = f.kind === 'torch' ? [1.5, 30] : [5, 18];
+      for (let z = 0; z <= tall; z++) for (let dx = -hw; dx <= hw; dx++) put(f.x + dx + z * SUN_X, f.y - 1 + z * SUN_Y);
     }
+
+    const [cast, cg] = makeCanvas(W, H);
+    const img = cg.createImageData(W, H);
+    for (let i = 0; i < mask.length; i++) {
+      if (!mask[i]) continue;
+      const j = i * 4;
+      img.data[j] = 12, img.data[j + 1] = 30, img.data[j + 2] = 22, img.data[j + 3] = 255;
+    }
+    cg.putImageData(img, 0, 0);
+
+    // contact shadow: the footprint itself, a pixel bigger (for a tree, round its trunk)
+    const [contact, kg] = makeCanvas(W, H);
+    kg.fillStyle = kg.strokeStyle = 'rgb(12,30,22)';
+    kg.lineWidth = 2;
+    for (const o of this.map.objects) {
+      const f = o.foot;
+      if (!o.frame || !f || o.kind === 'bush' || o.kind === 'lily' || FLAT.has(o.frame)) continue;
+      kg.beginPath();
+      for (let i = 0; i < f.poly.length; i += 2) kg[i ? 'lineTo' : 'moveTo'](f.poly[i], f.poly[i + 1]);
+      kg.closePath();
+      kg.fill();
+      kg.stroke();
+    }
+    // keep it crisp: every pixel either in shadow or not
+    const ci = kg.getImageData(0, 0, W, H);
+    for (let i = 3; i < ci.data.length; i += 4) ci.data[i] = ci.data[i] > 110 ? 255 : 0;
+    kg.putImageData(ci, 0, 0);
     return [cast, contact];
   }
 
   private placeObjects(): void {
     for (const o of this.map.objects) {
       if (!o.frame) continue;
-      const img = this.scene.add.image(Math.round(o.x), Math.round(o.y), 'meadow', o.frame).setOrigin(0.5, 1);
+      const img = this.scene.add.image(Math.round(o.x), Math.round(o.y), 'meadow', o.frame).setOrigin(0.5, 1).setFlipX(!!o.flip);
       if (o.kind === 'lily') {
         img.setOrigin(0.5, 0.5).setDepth(1.5);
         this.lilies.push(img);
         continue;
       }
-      img.setDepth(o.y);
+      this.images.set(o, img);
+      // In depth order a thing stands where the front edge of its footprint is - for a house that's
+      // the foot of its walls, not the bottom of the rubble painted round it.
+      img.setDepth(FLAT.has(o.frame) ? 1.6 : o.foot && o.kind !== 'bush' ? o.foot.front : o.y);
+      if (o.foot && o.kind !== 'bush') this.standing.push({ foot: o.foot, image: img, bounds: img.getBounds(), near: false });
       if (o.kind === 'bush') {
         this.bushes.push({ data: o, image: img, w: img.width, h: img.height, shake: 0, inside: false, seed: Math.random() * 10 });
       }
-      if (o.kind === 'tree' || o.kind === 'wall' || o.kind === 'pillar') {
+      if (o.kind === 'tree' || o.kind === 'wall' || o.kind === 'pillar' || o.kind === 'house' || o.kind === 'tent') {
         this.things.push({ data: o, image: img, bounds: img.getBounds() });
       }
     }
   }
 
+  /** Draw `image` with `owner` (just in front of it, by `offset`), wherever the owner sorts. */
+  follow(owner: Placed, image: Phaser.GameObjects.Image, offset: number): void {
+    const o = this.images.get(owner);
+    if (o) this.followers.push({ owner: o, image, offset });
+  }
+
+  /**
+   * Who is in front: where the player overlaps a picture, compare the player's feet with the front
+   * edge of that thing's footprint right where the player stands - so you can walk in front of the
+   * low end of a slanted bench and behind its high end, or along the side of a house.
+   */
+  private sortAround(px: number, py: number): void {
+    for (const s of this.standing) {
+      const b = s.bounds;
+      const near = px + 8 > b.x && px - 8 < b.right && py > b.y && py - 34 < b.bottom;
+      if (near) {
+        // Only correct its usual place in the order where that would be wrong for the player - so it
+        // never jumps past other things (the flags in front of the guild hall stay in front of it).
+        const usual = s.foot.front;
+        s.image.setDepth(py >= frontAt(s.foot, px) ? Math.min(usual, py - 0.25) : Math.max(usual, py + 0.25));
+        s.near = true;
+      } else if (s.near) {
+        s.image.setDepth(s.foot.front);
+        s.near = false;
+      }
+    }
+    for (const f of this.followers) f.image.setDepth(f.owner.depth + f.offset);
+  }
+
+  /**
+   * Where something small standing at (x, y) - a box w wide and h tall above its feet - goes in the draw
+   * order: by its feet, but where it overlaps a picture, in front of or behind it by that thing's front
+   * edge right at x (as for the player), so an animal by a slanted bench or the corner of a house sorts
+   * the way it stands. In front, it also goes past what's drawn with that thing (a fountain's water).
+   */
+  depthFor(x: number, y: number, w: number, h: number): number {
+    let d = y;
+    for (const s of this.standing) {
+      const b = s.bounds;
+      if (x + w / 2 <= b.x || x - w / 2 >= b.right || y <= b.y || y - h >= b.bottom) continue;
+      const at = s.image.depth;
+      if (y >= frontAt(s.foot, x)) d = Math.max(d, at + 0.6);
+      else d = Math.min(d, at - 0.05);
+    }
+    return d;
+  }
+
   /** Fade trees and walls the player is standing behind, so they never vanish from view. */
   update(dt: number, px: number, py: number, time: number): void {
+    this.sortAround(px, py);
     for (const t of this.things) {
-      const behind = py < t.data.y - 2 && Phaser.Geom.Rectangle.Contains(t.bounds, px, py - 10);
+      const f = t.data.foot;
+      const front = f ? frontAt(f, px) : t.data.y;
+      // a tree's canopy hides you anywhere under it; a house, tent or wall only when you're really behind it
+      const across = t.data.kind === 'tree' || !f || Math.abs(px - f.x) < f.hw;
+      const behind = across && py < front - 2 && Phaser.Geom.Rectangle.Contains(t.bounds, px, py - 10);
       const target = behind ? 0.45 : 1;
       t.image.alpha += (target - t.image.alpha) * Math.min(1, dt * 8);
     }
@@ -274,4 +450,25 @@ export class MeadowView {
       });
     }
   }
+}
+
+/** The front (lowest) edge of a footprint at x: where its outline meets the ground nearest the viewer. */
+export function frontAt(f: Footprint, x: number): number {
+  return edgeAt(f, x, true);
+}
+
+/** The front (or back) edge of a footprint at x, x held inside the footprint. */
+export function edgeAt(f: Footprint, x: number, front: boolean): number {
+  const p = f.poly;
+  const cx = Math.max(f.x - f.hw + 0.01, Math.min(f.x + f.hw - 0.01, x));
+  let y = front ? -Infinity : Infinity;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    const ax = p[j], ay = p[j + 1], bx = p[i], by = p[i + 1];
+    if ((ax <= cx && bx >= cx) || (bx <= cx && ax >= cx)) {
+      const t = bx === ax ? 0 : (cx - ax) / (bx - ax);
+      const e = ay + (by - ay) * t;
+      y = front ? Math.max(y, e) : Math.min(y, e);
+    }
+  }
+  return Number.isFinite(y) ? y : f.front;
 }

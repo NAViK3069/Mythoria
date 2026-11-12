@@ -1,6 +1,6 @@
 import { fmt, h, icon, toast } from '../dom';
 import { registerPanel } from '../Modal';
-import { changed, giveReward, player, progressQuests } from '../store';
+import { changed, giveReward, player, progressQuests, wipeSave } from '../store';
 import { avatar, rewardChips } from './common';
 import { rewardItems, showRewards } from '../reward';
 
@@ -106,7 +106,7 @@ registerPanel('settings', {
               class: 'btn ghost px-cut',
               onclick: () => {
                 if (!confirm('ล้างข้อมูลผู้เล่นที่เก็บไว้ในเครื่องนี้ทั้งหมด?')) return;
-                try { localStorage.removeItem('mythoria.player.v1'); } catch { /* ignore */ }
+                wipeSave();
                 location.reload();
               },
             }, 'ล้างข้อมูลในเครื่อง'),
