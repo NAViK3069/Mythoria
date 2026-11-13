@@ -17,6 +17,45 @@ export function mixRGB(a: RGB, b: RGB, t: number): RGB {
   return (Math.round(R(a) + (R(b) - R(a)) * k) << 16) | (Math.round(G(a) + (G(b) - G(a)) * k) << 8) | Math.round(B(a) + (B(b) - B(a)) * k);
 }
 
+// Fading a pixel out: opacity MIXED with a light scattered thinning (the owner's call - an ordered dither alone
+// thinned out into a sparse checkerboard and looked rough). `fade(x, y, k)` says whether the pixel shows at strength
+// k; a pixel that shows is drawn see-through by k, and only the faintest part of a fade loses pixels. The very next
+// px()/add() at that same pixel takes the opacity (effects call it as `if (keep(X, Y, k)) s.px(X, Y, c)`).
+// (the pixels that drop out go in a scattered order, a pixel's own random number - an ordered 4 x 4 dither left a
+// regular grid of holes on a large fill, the checkerboard look the owner didn't want)
+const noise = (x: number, y: number): number => {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+/** How much of a fade drops pixels (the rest is opacity): only the faintest part of a fade thins out. */
+const HOLES = 0.25;
+let fadeX = NaN, fadeY = 0, fadeA = 1;
+
+/** Does pixel (x, y) show at strength k (0..1)? If it does, the next px()/add() there is drawn see-through by k. */
+export function fade(x: number, y: number, k: number): boolean {
+  if (k >= 1) {
+    fadeX = NaN;
+    return true;
+  }
+  if (!(k > 0) || k <= noise(Math.floor(x), Math.floor(y)) * HOLES) {
+    fadeX = NaN;
+    return false;
+  }
+  fadeX = Math.floor(x);
+  fadeY = Math.floor(y);
+  fadeA = Math.min(1, k * 1.15 + 0.05);
+  return true;
+}
+
+/** The opacity a fade() left for pixel (x, y) (1: none; a pixel elsewhere ends it). */
+function faded(x: number, y: number): number {
+  if (fadeX !== fadeX) return 1;
+  if (Math.floor(x) === fadeX && Math.floor(y) === fadeY) return fadeA;
+  fadeX = NaN;
+  return 1;
+}
+
 export class Surface {
   private readonly r: Float32Array;
   private readonly g: Float32Array;
@@ -49,8 +88,26 @@ export class Surface {
 
   /** Paint one pixel, alpha a (0..1) over what's there. */
   px(x: number, y: number, c: RGB, a = 1): void {
+    const f = faded(x, y);
     const i = this.at(x, y);
     if (i < 0 || a <= 0) return;
+    if (f < 1) {
+      // a fading pixel COVERS rather than stacks: painted again (effects often go over a pixel several times) it
+      // keeps the stronger opacity instead of building back up to solid (which brought the checkerboard back)
+      const k = Math.min(1, a * f), ao = this.a[i], na = Math.max(ao, k);
+      let r = R(c), g = G(c), b = B(c);
+      if (ao > 0) {
+        const t = k / na;
+        r = (this.r[i] / ao) * (1 - t) + r * t;
+        g = (this.g[i] / ao) * (1 - t) + g * t;
+        b = (this.b[i] / ao) * (1 - t) + b * t;
+      }
+      this.r[i] = r * na;
+      this.g[i] = g * na;
+      this.b[i] = b * na;
+      this.a[i] = na;
+      return;
+    }
     const k = Math.min(1, a), q = 1 - k;
     this.r[i] = R(c) * k + this.r[i] * q;
     this.g[i] = G(c) * k + this.g[i] * q;
@@ -76,6 +133,7 @@ export class Surface {
 
   /** Add light to one pixel (k 0..1+). */
   add(x: number, y: number, c: RGB, k: number): void {
+    k *= faded(x, y);
     const i = this.at(x, y);
     if (i < 0 || k <= 0) return;
     this.lr[i] += R(c) * k;

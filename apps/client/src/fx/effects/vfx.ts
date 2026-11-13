@@ -1,4 +1,4 @@
-import { mixRGB, type RGB, type Surface } from '../surface';
+import { fade, mixRGB, type RGB, type Surface } from '../surface';
 import type { Pop } from './battlePops';
 
 // Skill effects, ported from the owner's ProjectZ (src/arena/vfx.js) onto our own engine (fx/surface.ts): crisp pixel
@@ -53,9 +53,9 @@ export const ph = (x: number, y: number, s: number) => {
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
-/** Is this pixel kept at strength k (0..1)? An ordered dither - a fade in pixels, never a faint smear. */
-export const keep = (x: number, y: number, k: number) => k >= 1 || (k > 0 && k > BAYER[((y & 3) << 2) | (x & 3)]);
+/** Is this pixel kept at strength k (0..1)? A dither mixed with opacity (surface.ts `fade`): the pixel drawn next
+ * there is see-through by k, so a fade is smooth instead of thinning into a checkerboard. */
+export const keep = fade;
 
 /** Soft light round (x, y): the palette's colour i, strength a; sq squashes it. */
 export function glow(s: Surface, x: number, y: number, r: number, pal: PalName, i: number, a: number, sq = 1): void {

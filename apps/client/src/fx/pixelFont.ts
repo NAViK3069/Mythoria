@@ -1,4 +1,4 @@
-import { mixRGB, Surface, type RGB } from './surface';
+import { fade, mixRGB, Surface, type RGB } from './surface';
 
 // Mythoria's own pixel font - for numbers and short shouts in battle (damage, CRIT, COMBO, VICTORY...), drawn
 // pixel by pixel on our engine (fx/surface.ts) at the map's own pixel size, and for the HUD's numbers (drawn to a
@@ -119,14 +119,14 @@ export const LOOKS = {
   uiGold: { ramp: [0xfffbe0, 0xffe48a, 0xffc94a, 0xe0962a], outline: 0x261404, shadow: 0x0e0802 } as TextLook,
 };
 
-/** A 4 x 4 ordered dither: pixel (x, y) shows while its threshold is under k (0..1). */
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-export const dither = (x: number, y: number, k: number): boolean => (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16 < k;
+/** Does pixel (x, y) show at strength k (0..1)? A 4 x 4 ordered dither mixed with opacity (surface.ts `fade`): the
+ * pixel drawn next there is see-through by k - a smooth fade, not a thinning checkerboard. */
+export const dither = fade;
 
 export interface PaintOpts {
   /** 1 = as drawn; the mask is scaled about its middle (nearest pixel - stays crisp). */
   scale?: number;
-  /** 0..1, fades through the ordered dither (no soft alpha - stays pixel art). */
+  /** 0..1, fades out (a dither mixed with opacity, surface.ts `fade`). */
   show?: number;
   /** Only the outline (an empty letter shape). */
   hollow?: boolean;
