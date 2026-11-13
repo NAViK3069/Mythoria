@@ -275,9 +275,8 @@ export function createHud(getFps: () => number): Hud {
     iconButton('guild', 'กิลด์', 'guild'));
   const play = h('button', { class: 'play', onclick: () => openPanel('modes'), title: 'โหมดเล่น', 'aria-label': 'โหมดเล่น' },
     h('div', { class: 'emblem' },
-      h('div', { class: 'halo' }),
+      // (no outer halo / second ring - the owner took the outer effects off)
       h('div', { class: 'ring' }),
-      h('div', { class: 'ring r2' }),
       h('div', { class: 'core' }, icon('battle', 48))),
     h('div', { class: 'pl-ribbon px-cut' }, h('span', { class: 'big' }, 'ต่อสู้')));
   const dock = h('div', { class: 'dock-bar' }, wingL, play, wingR);
