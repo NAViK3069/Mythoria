@@ -790,7 +790,9 @@ export class BattleStage {
 
   private regrip(a: Actor): void {
     const g = a.unit.look ? gear[a.unit.look] : undefined;
-    a.hero!.setHands(g && !g.front.over ? (g.front.pose ?? 'grip') : 'open', g?.back && !g.back.over ? (g.back.pose ?? 'grip') : 'open');
+    // (a two-handed weapon: the back hand grips the same handle - a fist, never the round open hand; as setGear does)
+    const back = g?.back && !g.back.over ? (g.back.pose ?? 'grip') : g?.front.twoHand ? 'grip' : 'open';
+    a.hero!.setHands(g && !g.front.over ? (g.front.pose ?? 'grip') : 'open', back);
   }
 
   private finish(result: 'win' | 'lose' | 'draw' | 'flee'): void {
