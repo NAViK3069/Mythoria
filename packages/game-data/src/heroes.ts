@@ -253,7 +253,7 @@ export const HEROES: readonly HeroDef[] = [
     race: 'automaton',
     look: 'pip',
     base: { atk: 290, hp: 3600, def: 220, spd: 118, evade: 8, skillEvade: 8, normalRes: 5, skillRes: 5, crit: 5, critDmg: 150, statusRes: 22 },
-    normal: { name: 'เคาะประแจ', cost: 0, area: 'single_front', effects: [{ type: 'damage', pct: 100 }], text: 'เคาะศัตรูแถวหน้า 100% ของพลังโจมตี' },
+    normal: { name: 'ทุบค้อน', cost: 0, area: 'single_front', effects: [{ type: 'damage', pct: 100 }], text: 'ทุบค้อนใส่ศัตรูแถวหน้า 100% ของพลังโจมตี' },
     skill1: {
       name: 'จูนเครื่อง', cost: 2, area: 'ally_single',
       effects: [{ type: 'atkUp', pct: 25, turns: 2 }, { type: 'actionAdvance', pct: 20 }],
@@ -456,6 +456,42 @@ export const HEROES: readonly HeroDef[] = [
       { name: 'ราตรีนิรันดร์', text: 'ราตรีกระหายเลือด: ดาเมจเพิ่มเป็น 220%' },
       { name: 'เลือดคืนชีพ', text: 'อมตะโลหิต: ฟื้นเลือดเพิ่มเป็น 40%' },
       { name: 'ราชันรัตติกาล', text: 'จันทร์สีเลือด: ลดพลังโจมตีศัตรูทั้งหมด 20% นาน 2 เทิร์น' },
+    ],
+  },
+  {
+    // the owner's ninja (Kuroha.aseprite) - her data is Claude's FIRST DRAFT: Epic marksman, dark, violet lightning
+    id: 'kuroha',
+    name: 'คุโรฮะ',
+    title: 'นินจาดาวสายฟ้าทมิฬ',
+    rarity: 'epic',
+    class: 'marksman',
+    element: 'dark',
+    race: 'human',
+    look: 'kuroha',
+    base: { atk: 470, hp: 3300, def: 165, spd: 116, evade: 14, skillEvade: 10, normalRes: 0, skillRes: 4, crit: 24, critDmg: 180, statusRes: 10 },
+    normal: { name: 'ดาวกระจาย', cost: 0, area: 'single_front', effects: [{ type: 'damage', pct: 100 }], text: 'ขว้างดาวกระจายใส่ศัตรูแถวหน้า 100% ของพลังโจมตี' },
+    skill1: {
+      name: 'ดาวสายฟ้า', cost: 2, area: 'single_any',
+      effects: [{ type: 'damage', pct: 210 }, { type: 'vulnerable', pct: 12, turns: 2 }],
+      text: 'ขว้างดาวสายฟ้าใส่เป้าใดก็ได้ 210% ของพลังโจมตี และเปราะบาง (รับดาเมจ +12%) นาน 2 เทิร์น',
+    },
+    skill2: {
+      name: 'พายุดาวกระจาย', cost: 4, area: 'all',
+      effects: [{ type: 'damage', pct: 125 }, { type: 'evadeDown', pct: 15, turns: 2 }],
+      text: 'โปรยดาวกระจายใส่ศัตรูทั้งหมด 125% ของพลังโจมตี และลดการหลบ 15% นาน 2 เทิร์น',
+    },
+    ult: {
+      name: 'วังวนสายฟ้าทมิฬ', cost: 0, area: 'all',
+      effects: [{ type: 'damage', pct: 240 }, { type: 'speedDown', pct: 20, turns: 2 }],
+      text: 'ดาวกระจายยักษ์หมุนเป็นวังวนสายฟ้าเหนือศัตรูทั้งหมด 240% ของพลังโจมตี และลดสปีด 20% นาน 2 เทิร์น',
+    },
+    passive: { name: 'เงาพริบตา', text: 'หลังใช้สกิล หลบการโจมตี +15% นาน 1 เทิร์น' },
+    talents: [
+      { name: 'คมสายฟ้า', text: 'ดาวสายฟ้า: ดาเมจเพิ่มเป็น 240%' },
+      { name: 'ฝีเท้าเงา', text: 'สปีด +6%' },
+      { name: 'พายุใบมีด', text: 'พายุดาวกระจาย: ดาเมจเพิ่มเป็น 145%' },
+      { name: 'เงาซ้อนเงา', text: 'เงาพริบตา: หลบเพิ่มเป็น +25%' },
+      { name: 'ดาวทมิฬ', text: 'วังวนสายฟ้าทมิฬ: ทำให้ศัตรูทั้งหมดเปราะบาง (รับดาเมจ +15%) นาน 2 เทิร์น' },
     ],
   },
 ];

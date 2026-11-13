@@ -20,9 +20,16 @@ export interface AuraHero {
   lift: number;
 }
 
-export type AuraKind = 'lantern' | 'fireAxe' | 'frostLance' | 'frostBody' | 'bloodBlade' | 'bloodBody' | 'shadowDaggers';
+export type AuraKind = 'lantern' | 'fireAxe' | 'frostLance' | 'frostBody' | 'bloodBlade' | 'bloodBody' | 'shadowDaggers' | 'pearlGlow' | 'crystalWand';
 
-const S = PAL.spirit, F = PAL.fire, I = PAL.ice, B = PAL.blood, V = PAL.violet;
+const S = PAL.spirit, F = PAL.fire, I = PAL.ice, B = PAL.blood, V = PAL.violet, Wt = PAL.water, Cr = PAL.crystal;
+/** The pearl on Marin's coral staff, from her hand (world px: up the staff, and back toward its other side - the same as
+ * moves/marin.ts ORB_U / ORB_V). */
+export const PEARL_U = 13.5;
+export const PEARL_V = -3;
+/** The orb on Neris's crystal wand, from her hand (world px; moves/neris.ts). */
+export const WAND_U = 15;
+export const WAND_V = 0;
 /** From Sira's hand to the flame in her lantern (world px: it hangs BELOW her hand, carried from its ring - the lantern
  * tools/weapon_art.py draws, shown at half). */
 export const LANTERN_LAMP = 6.5;
@@ -63,7 +70,41 @@ export class HeroAura implements Pop {
       case 'shadowDaggers':
         if (!this.ground) this.shadowDaggers(s);
         break;
+      case 'pearlGlow':
+        if (!this.ground) this.pearlGlow(s);
+        break;
+      case 'crystalWand':
+        if (!this.ground) this.crystalWand(s);
+        break;
     }
+  }
+
+  /** Marin's pearl: a soft sea-blue light breathing round it, a glint, now and then a tiny bubble of light rising off it. */
+  private pearlGlow(s: Surface): void {
+    const t = this.t, p = this.on(PEARL_U, PEARL_V), k = 0.5 + 0.5 * Math.sin(t * 2.2);
+    s.glow(p.x, p.y, 9 + 1.5 * k, Wt[3], 0.2 + 0.08 * k);
+    s.glow(p.x, p.y, 4, Wt[1], 0.18 + 0.1 * k);
+    if (Math.sin(t * 3.1) > 0.92) s.px(Math.round(p.x - 1), Math.round(p.y - 1), 0xffffff);
+    for (let i = 0; i < 2; i++) {
+      const q = (t * 0.45 + i * 0.5) % 1, n = Math.floor(t * 0.45 + i * 0.5);
+      const X = Math.round(p.x + (hash(n, i) - 0.5) * 6 + Math.sin(t * 3 + i) * 1.2), Y = Math.round(p.y - 3 - q * 10);
+      if (keep(X, Y, 0.7 * (1 - q))) s.px(X, Y, q < 0.4 ? Wt[1] : Wt[2]);
+    }
+  }
+
+  /** Neris's wand: a soft crystal light round its orb and two tiny crystals floating round it, now and then a glint. */
+  private crystalWand(s: Surface): void {
+    const t = this.t, p = this.on(WAND_U, WAND_V), k = 0.5 + 0.5 * Math.sin(t * 2.6);
+    s.glow(p.x, p.y, 8 + 1.5 * k, Cr[3], 0.2 + 0.08 * k);
+    s.glow(p.x, p.y, 3.5, Cr[1], 0.2 + 0.1 * k);
+    for (let i = 0; i < 2; i++) {
+      const a = t * 1.8 + i * Math.PI, X = Math.round(p.x + Math.cos(a) * 7), Y = Math.round(p.y - 2 + Math.sin(a) * 3 - (i ? 3 : 0));
+      if (Math.sin(a) < 0 && i === 0) continue; // (behind the orb: hidden)
+      s.px(X, Y, Cr[0]);
+      s.px(X, Y - 1, Cr[2]);
+      s.px(X, Y + 1, Cr[3]);
+    }
+    if (Math.sin(t * 2.7) > 0.93) s.px(Math.round(p.x - 1), Math.round(p.y - 1), 0xffffff), s.px(Math.round(p.x - 1), Math.round(p.y - 2), Cr[1]);
   }
 
   /** A point d px along the weapon from the hand (negative: back the other way). */

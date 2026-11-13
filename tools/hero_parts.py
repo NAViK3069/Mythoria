@@ -67,12 +67,12 @@ WEAPONS = {
     "mace": "handle", "axe": "handle", "dagger": "handle", "staff": "handle", "wrench": "handle",
     "lantern": "handle", "spiritlantern": "hang", "shield": "centre", "bow": "bow",
     "knightsword": "handle", "knightshield": "centre",
-    "lance": "handle", "firespear": "handle", "claw": "centre", "wand": "handle", "druidstaff": "handle", "bloodsword": "handle",
+    "lance": "handle", "firespear": "handle", "claw": "centre", "wand": "handle", "druidstaff": "handle", "coralstaff": "handle", "crystalwand": "handle", "hammer": "handle", "steamhammer": "handle", "stormstar": "centre", "bloodsword": "handle",
 }
 WSRC = os.path.join(SRC, "weapons")
 # weapons drawn FINE (by the owner, or tools/weapon_art.py): art pixels to a world pixel (shown at 1/res size in the
 # game). The claw is a clawed gauntlet: worn over the fist ("centre"), not held.
-FINE_WEAPONS = {"knightsword": 2, "knightshield": 2, "bloodsword": 2, "dagger": 2, "bow": 2, "claw": 2, "lance": 2, "firespear": 2}
+FINE_WEAPONS = {"knightsword": 2, "knightshield": 2, "bloodsword": 2, "dagger": 2, "bow": 2, "claw": 2, "lance": 2, "firespear": 2, "coralstaff": 2, "crystalwand": 2, "steamhammer": 2, "stormstar": 2}
 
 
 # held pointing forward rather than up (turned a quarter clockwise - a whole turn of the picture, no pixels lost).
@@ -80,15 +80,15 @@ FINE_WEAPONS = {"knightsword": 2, "knightshield": 2, "bloodsword": 2, "dagger": 
 FORWARD = set()
 # held leaning out from the body (degrees, clockwise = the point toward the foe): the front hand's, the back hand's.
 # The fist turns with it (all the way, as a hand would), in the game and in the standing picture.
-TILT = {"dagger": (40, -25), "firespear": (52, 0)}
+TILT = {"dagger": (40, -25), "firespear": (52, 0), "coralstaff": (20, 0), "crystalwand": (15, 0), "hammer": (15, 0), "steamhammer": (15, 0)}
 # held in BOTH hands: the front hand grips at GRIP_ROW (art rows from the top), the back hand this many art px further down
 # the shaft (Fenrir's spear: the owner's gold spear, held diagonally in two hands)
-GRIP_ROW = {"firespear": 44}
+GRIP_ROW = {"firespear": 44, "coralstaff": 27, "crystalwand": 26, "hammer": 16, "steamhammer": 35}
 TWO_HAND = {"firespear": 14}
 # the standing pictures (48 x 48) have no room for the battle's lean: a long weapon stands more upright there, its hand
 # placed where it fits
 PIC_TILT = {"firespear": 28}
-PIC_HOLD = {"firespear": (16 + 7, 32 - 14)}
+PIC_HOLD = {"firespear": (16 + 7, 32 - 14), "coralstaff": (16 + 11, 32 - 12), "crystalwand": (16 + 11, 32 - 12)}
 # held close by the body in the back hand (a blade leaning back stays inside the picture)
 NEAR_BACK = {"dagger"}
 # mirrored in the front hand, so the blade's edge faces out, away from the body
@@ -163,7 +163,7 @@ def res_of(name):
 
 
 # (any weapon shown at another size than FINE_SHOW)
-SHOW = {}
+SHOW = {"steamhammer": 0.5, "stormstar": 0.5}
 
 
 def show_of(name):
@@ -218,22 +218,32 @@ HEROES = {
     "kael": ("#d08a20", ("#2a1a10", "#4a2c1a"), "axe", None),
     "nyx": ("#e0304a", ("#140c1c", "#2a1c3e"), "dagger", "dagger"),
     "fen": ("#3a9a4a", ("#3a2414", "#5a3a20"), "bow", None),
-    "marin": ("#2aa8b8", ("#14306a", "#1f4a96"), "staff", None),
+    # Marin's coral staff: a PixelLab picture drawn after the owner's reference (a gnarled staff whose head forks round a
+    # gem), in coral pink with a sea-blue pearl
+    "marin": ("#2aa8b8", ("#14306a", "#1f4a96"), "coralstaff", None),
     # Sira's lantern: drawn by hand (tools/weapon_art.py) at the heroes' own pixel size, smaller than the PixelLab one
     "sira": ("#5ad8f0", ("#7a8a9a", "#b0c0d0"), "spiritlantern", None),
-    "pip": (None, ("#5a3a1a", "#8a5a28"), "wrench", None),
+    # Pip's hammer: redrawn by PixelLab after the owner's (hammer.png - kept; the owner picked candidate 24): a dark iron head, orange bands, a big green core;
+    # fine, shown at exactly half (2 art px per world px) so its head is the size of the owner's
+    "pip": (None, ("#5a3a1a", "#8a5a28"), "steamhammer", None),
     # the owner's new heroes (eye / boots unused: their art is used as drawn)
     "dravik": (None, None, "lance", None),
     # Fenrir: the owner's spear (the blue-and-gold one, its blade recoloured to fire), in two hands (was twin claws)
     "fenrir": (None, None, "firespear", None),
-    "neris": (None, None, "wand", None),
+    # Neris's crystal wand: a PixelLab picture drawn after the owner's reference (a blue shaft banded in gold, a crystal
+    # orb ringed like a planet), its shaft shortened
+    "neris": (None, None, "crystalwand", None),
     "sylva": (None, None, "druidstaff", None),
     "valdris": (None, None, "bloodsword", None),
+    # Kuroha (the owner's new ninja, Kuroha.aseprite): a giant shuriken, PixelLab redrawn after the owner's green one in
+    # violet and electric blue (candidate 10), held by its hub; fine, shown at half
+    "kuroha": (None, None, "stormstar", None),
 }
 
 # looks the owner drew (an Aseprite sheet each) - used as drawn, not inpainted. All of them now: the seven starters
 # were redrawn by the owner (the inpainted <look>.png pictures are only the fallback for a look missing here).
 OWN_ART = {look: f"{look}.aseprite" for look in HEROES}
+OWN_ART["kuroha"] = "Kuroha.aseprite"  # (the owner named the file with a capital)
 
 FULL = (48, 48)
 AT = (8, 12)  # where the 32x32 frame sits on the full picture

@@ -83,6 +83,10 @@ export class MasterCharacter {
   private skinId = '';
   /** Where the hands rest (feet-local, facing right); moved out when holding a weapon. */
   private rest = { front: { ...HAND_FRONT }, back: { ...HAND_BACK } };
+  /** Is the front weapon in the hand (false while it's thrown - Kuroha's shuriken), and how far it's turned in the hand
+   * on top of its grip (a shuriken twirled). */
+  gearShown = true;
+  gearSpin = 0;
   private gearFront: { img: Phaser.GameObjects.Image; held: Held } | null = null;
   private gearBack: { img: Phaser.GameObjects.Image; held: Held } | null = null;
   /** A swing of the front hand (radians, set by whoever animates an attack). */
@@ -305,7 +309,7 @@ export class MasterCharacter {
     // (a fist round a tilted handle turns with it)
     this.placeHand(this.handFront, this.poseFront, fx, fy, fr + ft);
     this.placeHand(this.handBack, this.poseBack, bx2, by2, br + bt);
-    this.gearFront?.img.setPosition(fx, fy).setRotation(fr + ft);
+    this.gearFront?.img.setPosition(fx, fy).setRotation(fr + ft + this.gearSpin).setVisible(this.gearShown);
     this.gearBack?.img.setPosition(bx, by).setRotation(br + bt);
     // (for effects that follow the blade: mirrored with the body when it faces left)
     const onScreen = (g: { x: number; y: number; angle: number }, hx: number, hy: number, r: number) => {

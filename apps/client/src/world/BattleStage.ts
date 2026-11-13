@@ -43,6 +43,8 @@ const HERO_AURAS: Record<string, AuraKind[]> = {
   dravik: ['frostLance', 'frostBody'],
   valdris: ['bloodBlade', 'bloodBody'],
   nyx: ['shadowDaggers'],
+  marin: ['pearlGlow'],
+  neris: ['crystalWand'],
 };
 
 /** Who hits from where they stand (the rest dash in). */
