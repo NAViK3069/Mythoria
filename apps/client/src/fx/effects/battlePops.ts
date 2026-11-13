@@ -833,7 +833,11 @@ export class HpBar {
   private t = Math.random() * 3;
   readonly W = 22;
 
-  constructor(readonly foe: boolean, readonly gem: RGB, readonly boss: boolean) {}
+  /** start: what it shows from the first frame (0..1 of max - a hero coming in hurt, its lasting HP), no animation. */
+  constructor(readonly foe: boolean, readonly gem: RGB, readonly boss: boolean, start = 1, shield = 0) {
+    this.hp = this.white = this.healFrom = clamp(start);
+    this.shield = clamp(shield);
+  }
 
   /** Still something to show (alive, or its last chunk still draining). */
   get visible(): boolean {

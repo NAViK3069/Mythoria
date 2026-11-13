@@ -144,7 +144,8 @@ export class BattleStage {
     this.battle.aiLevel = ['smart', 'smart'];
     for (const u of this.battle.units) {
       this.actors.set(u.uid, this.makeActor(u));
-      this.bars.set(u.uid, new HpBar(u.team === 1, elColour(u), !!u.miniBoss));
+      // (from its real HP: a hero with lasting HP comes in hurt - its bar mustn't start full)
+      this.bars.set(u.uid, new HpBar(u.team === 1, elColour(u), !!u.miniBoss, u.hp / Math.max(1, u.maxHp)));
     }
     this.layer = new BattleLayer(scene);
     // effects on the ground (a summoning circle): just over the ground, under the fighters
