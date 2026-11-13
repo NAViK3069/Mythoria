@@ -7,7 +7,7 @@ import { HEROES, STARTER_HEROES } from '@mythoria/game-data';
  * Local sample data only (no summoning yet): the player also gets every other hero, so the owner's new heroes can be
  * seen and tried. Raise when heroes are added; a saved player is topped up once per value.
  */
-const SAMPLE_HEROES = 3;
+const SAMPLE_HEROES = 4;
 
 export interface Mail {
   id: string;

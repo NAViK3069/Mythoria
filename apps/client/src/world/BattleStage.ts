@@ -45,6 +45,7 @@ const HERO_AURAS: Record<string, AuraKind[]> = {
   nyx: ['shadowDaggers'],
   marin: ['pearlGlow'],
   neris: ['crystalWand'],
+  astraea: ['sakuraBlade', 'sakuraBody'],
 };
 
 /** Who hits from where they stand (the rest dash in). */

@@ -1,3 +1,4 @@
+import { ASTRAEA } from './astraea';
 import { BRAM } from './bram';
 import { DRAVIK } from './dravik';
 import { FEN } from './fen';
@@ -23,6 +24,7 @@ export const MOVES: Record<string, HeroMoves> = {
   neris: NERIS,
   pip: PIP,
   kuroha: KUROHA,
+  astraea: ASTRAEA,
   sylva: SYLVA,
   sira: SIRA,
   nyx: NYX,

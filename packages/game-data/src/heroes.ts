@@ -494,6 +494,43 @@ export const HEROES: readonly HeroDef[] = [
       { name: 'ดาวทมิฬ', text: 'วังวนสายฟ้าทมิฬ: ทำให้ศัตรูทั้งหมดเปราะบาง (รับดาเมจ +15%) นาน 2 เทิร์น' },
     ],
   },
+  {
+    // the owner's Mythic swordswoman (Astraea.aseprite) - "the coolest hero ever" (the owner); her data is Claude's
+    // FIRST DRAFT: Mythic assassin, light, celestial (Astraea - the star maiden), a sakura katana
+    id: 'astraea',
+    name: 'แอสเทรีย',
+    title: 'ดาบซากุระแห่งดวงดาว',
+    rarity: 'mythic',
+    class: 'assassin',
+    element: 'light',
+    race: 'celestial',
+    look: 'astraea',
+    base: { atk: 560, hp: 4200, def: 210, spd: 122, evade: 16, skillEvade: 12, normalRes: 4, skillRes: 6, crit: 30, critDmg: 200, statusRes: 18 },
+    normal: { name: 'ฟันซากุระ', cost: 0, area: 'single_any', effects: [{ type: 'damage', pct: 110 }], text: 'ฟันศัตรูตัวใดก็ได้ 110% ของพลังโจมตี' },
+    skill1: {
+      name: 'ไออิ: กลีบจันทร์', cost: 2, area: 'single_any',
+      effects: [{ type: 'damage', pct: 300 }, { type: 'vulnerable', pct: 15, turns: 2 }],
+      text: 'ชักดาบฟันฉับเดียวใส่ศัตรูตัวใดก็ได้ 300% ของพลังโจมตี และเปราะบาง (รับดาเมจ +15%) นาน 2 เทิร์น',
+    },
+    skill2: {
+      name: 'พายุกลีบซากุระ', cost: 4, area: 'all',
+      effects: [{ type: 'damage', pct: 170 }, { type: 'bleed', pct: 30, turns: 2 }],
+      text: 'พายุกลีบซากุระคมดาบพัดผ่านศัตรูทั้งหมด 170% ของพลังโจมตี และติดเลือดไหล 30% นาน 2 เทิร์น',
+    },
+    ult: {
+      name: 'ดาราซากุระพันคม', cost: 0, area: 'all',
+      effects: [{ type: 'damage', pct: 360 }, { type: 'vulnerable', pct: 20, turns: 2 }],
+      text: 'หยุดเวลาใต้ต้นซากุระแห่งดวงดาว ฟันพันคมใส่ศัตรูทั้งหมด 360% ของพลังโจมตี และเปราะบาง (รับดาเมจ +20%) นาน 2 เทิร์น',
+    },
+    passive: { name: 'ซากุระไม่ร่วงโรย', text: 'ทุกครั้งที่ล้มศัตรู ได้พลังโจมตี +10% (สะสมสูงสุด 3 ครั้ง) และชาร์จอัลติเมต +15%' },
+    talents: [
+      { name: 'คมจันทร์', text: 'ไออิ: กลีบจันทร์: ดาเมจเพิ่มเป็น 340%' },
+      { name: 'ก้าวกลีบไม้', text: 'สปีด +8%' },
+      { name: 'ฤดูใบไม้ผลินิรันดร์', text: 'พายุกลีบซากุระ: ดาเมจเพิ่มเป็น 200%' },
+      { name: 'ดาบดวงดาว', text: 'แรงโจมตีคริติคอล +25%' },
+      { name: 'ราชินีซากุระ', text: 'ดาราซากุระพันคม: ศัตรูที่เลือดต่ำกว่า 30% ล้มทันที' },
+    ],
+  },
 ];
 
 /** A hero's data by id. */

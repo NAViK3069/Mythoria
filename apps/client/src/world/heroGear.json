@@ -355,5 +355,31 @@
    "I": "#f7ded8",
    "i": "#dcb3a9"
   }
+ },
+ "astraea": {
+  "front": {
+   "frame": "weapon_astraea",
+   "x": 17.0,
+   "y": 132,
+   "w": 33,
+   "h": 168,
+   "over": false,
+   "rest": [
+    11,
+    -9
+   ],
+   "scale": 0.25,
+   "tilt": 0.6632,
+   "twoHand": 6.0
+  },
+  "skin": {
+   "H": "#fcebe6",
+   "j": "#d3a99d",
+   "k": "#be8e7d",
+   "l": "#a37568",
+   "o": "#572f27",
+   "I": "#f6ddd7",
+   "i": "#e8c1b7"
+  }
  }
 }

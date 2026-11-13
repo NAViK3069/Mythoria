@@ -1,6 +1,7 @@
 import type { RGB, Surface } from '../surface';
 import type { Pop } from './battlePops';
 import { clamp, hash, keep, PAL } from './vfx';
+import { blossom, petal } from './sakura';
 
 // What a hero carries with them all through a battle, in our own pixels on fx/surface.ts - a flame in a lantern, an axe
 // that smoulders and throws sparks, a lance breathing frost, a sword wreathed in blood-light, and for the great ones an
@@ -20,7 +21,7 @@ export interface AuraHero {
   lift: number;
 }
 
-export type AuraKind = 'lantern' | 'fireAxe' | 'frostLance' | 'frostBody' | 'bloodBlade' | 'bloodBody' | 'shadowDaggers' | 'pearlGlow' | 'crystalWand';
+export type AuraKind = 'lantern' | 'fireAxe' | 'frostLance' | 'frostBody' | 'bloodBlade' | 'bloodBody' | 'shadowDaggers' | 'pearlGlow' | 'crystalWand' | 'sakuraBlade' | 'sakuraBody';
 
 const S = PAL.spirit, F = PAL.fire, I = PAL.ice, B = PAL.blood, V = PAL.violet, Wt = PAL.water, Cr = PAL.crystal;
 /** The pearl on Marin's coral staff, from her hand (world px: up the staff, and back toward its other side - the same as
@@ -76,6 +77,12 @@ export class HeroAura implements Pop {
       case 'crystalWand':
         if (!this.ground) this.crystalWand(s);
         break;
+      case 'sakuraBlade':
+        if (!this.ground) this.sakuraBlade(s);
+        break;
+      case 'sakuraBody':
+        if (!this.ground) this.sakuraBody(s);
+        break;
     }
   }
 
@@ -105,6 +112,47 @@ export class HeroAura implements Pop {
       s.px(X, Y + 1, Cr[3]);
     }
     if (Math.sin(t * 2.7) > 0.93) s.px(Math.round(p.x - 1), Math.round(p.y - 1), 0xffffff), s.px(Math.round(p.x - 1), Math.round(p.y - 2), Cr[1]);
+  }
+
+  /** Astraea's katana (its blade 12 to 33 px up from her hand): a pink sheen along its edge, a glint of starlight
+   * running up it now and then, petals coming loose off it and drifting away. */
+  private sakuraBlade(s: Surface): void {
+    const t = this.t, Ks = PAL.sakura;
+    for (let i = 0; i <= 4; i++) {
+      const p = this.on(13 + i * 5, 0);
+      s.glow(p.x, p.y, 5, Ks[3], 0.16 + 0.06 * Math.sin(t * 3 + i));
+    }
+    const gq = (t % 2.6) / 0.45;
+    if (gq < 1) {
+      const p = this.on(13 + gq * 20, 0.5);
+      s.px(Math.round(p.x), Math.round(p.y), 0xffffff);
+      s.glow(p.x, p.y, 4, 0xffe7a0, 0.55 * (1 - gq));
+    }
+    for (let i = 0; i < 3; i++) {
+      const per = 1.6 + i * 0.37, q = ((t + i * 0.7) % per) / per, n = Math.floor((t + i * 0.7) / per);
+      const p = this.on(14 + hash(n, i) * 18, 1);
+      petal(s, p.x - this.hero.facing * q * 14 + Math.sin(t * 2 + i) * 2, p.y + q * 12 - q * q * 4, t * 2 + i, 1 - q * q);
+    }
+  }
+
+  /** Astraea herself (a Mythic): petals always drifting down round her on a gentle wind, now and then a whole blossom,
+   * a few stars twinkling about her and a soft pink light. */
+  private sakuraBody(s: Surface): void {
+    const t = this.t, x = this.hero.x, y = this.hero.y - this.hero.lift, f = this.hero.facing;
+    s.glow(x, y - 16, 18, PAL.sakura[3], 0.1 + 0.03 * Math.sin(t * 2));
+    for (let i = 0; i < 9; i++) {
+      const per = 2.4 + hash(i, 1) * 1.6, q = ((t + i * 0.53) % per) / per, n = Math.floor((t + i * 0.53) / per);
+      const px = x + (hash(n, i) - 0.5) * 34 - f * q * 10 + Math.sin(t * 1.7 + i) * 3, py = y - 38 + hash(n, i, 2) * 8 + q * 40;
+      const a = Math.min(1, q * 5) * (1 - clamp((q - 0.8) / 0.2));
+      if (i === 0) blossom(s, px, py, 1.2, t * 2, a * 0.9);
+      else petal(s, px, py, t * (1.5 + hash(i, 3)) + i, a * 0.85);
+    }
+    for (let i = 0; i < 3; i++) {
+      const tw = Math.sin(t * 3 + i * 2.1);
+      if (tw < 0.6) continue;
+      const X = Math.round(x + Math.cos(i * 2.4 + t * 0.3) * 16), Y = Math.round(y - 20 + Math.sin(i * 1.7) * 12);
+      s.px(X, Y, 0xffffff), s.px(X + 1, Y, 0xffe7a0), s.px(X - 1, Y, 0xffe7a0), s.px(X, Y - 1, 0xffe7a0), s.px(X, Y + 1, 0xffe7a0);
+    }
   }
 
   /** A point d px along the weapon from the hand (negative: back the other way). */

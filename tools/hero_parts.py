@@ -67,12 +67,12 @@ WEAPONS = {
     "mace": "handle", "axe": "handle", "dagger": "handle", "staff": "handle", "wrench": "handle",
     "lantern": "handle", "spiritlantern": "hang", "shield": "centre", "bow": "bow",
     "knightsword": "handle", "knightshield": "centre",
-    "lance": "handle", "firespear": "handle", "claw": "centre", "wand": "handle", "druidstaff": "handle", "coralstaff": "handle", "crystalwand": "handle", "hammer": "handle", "steamhammer": "handle", "stormstar": "centre", "bloodsword": "handle",
+    "lance": "handle", "firespear": "handle", "claw": "centre", "wand": "handle", "druidstaff": "handle", "coralstaff": "handle", "crystalwand": "handle", "hammer": "handle", "steamhammer": "handle", "stormstar": "centre", "sakurakatana": "handle", "bloodsword": "handle",
 }
 WSRC = os.path.join(SRC, "weapons")
 # weapons drawn FINE (by the owner, or tools/weapon_art.py): art pixels to a world pixel (shown at 1/res size in the
 # game). The claw is a clawed gauntlet: worn over the fist ("centre"), not held.
-FINE_WEAPONS = {"knightsword": 2, "knightshield": 2, "bloodsword": 2, "dagger": 2, "bow": 2, "claw": 2, "lance": 2, "firespear": 2, "coralstaff": 2, "crystalwand": 2, "steamhammer": 2, "stormstar": 2}
+FINE_WEAPONS = {"knightsword": 2, "knightshield": 2, "bloodsword": 2, "dagger": 2, "bow": 2, "claw": 2, "lance": 2, "firespear": 2, "coralstaff": 2, "crystalwand": 2, "steamhammer": 2, "stormstar": 2, "sakurakatana": 4}
 
 
 # held pointing forward rather than up (turned a quarter clockwise - a whole turn of the picture, no pixels lost).
@@ -80,15 +80,15 @@ FINE_WEAPONS = {"knightsword": 2, "knightshield": 2, "bloodsword": 2, "dagger": 
 FORWARD = set()
 # held leaning out from the body (degrees, clockwise = the point toward the foe): the front hand's, the back hand's.
 # The fist turns with it (all the way, as a hand would), in the game and in the standing picture.
-TILT = {"dagger": (40, -25), "firespear": (52, 0), "coralstaff": (20, 0), "crystalwand": (15, 0), "hammer": (15, 0), "steamhammer": (15, 0)}
+TILT = {"dagger": (40, -25), "firespear": (52, 0), "coralstaff": (20, 0), "crystalwand": (15, 0), "hammer": (15, 0), "steamhammer": (15, 0), "sakurakatana": (38, 0)}
 # held in BOTH hands: the front hand grips at GRIP_ROW (art rows from the top), the back hand this many art px further down
 # the shaft (Fenrir's spear: the owner's gold spear, held diagonally in two hands)
-GRIP_ROW = {"firespear": 44, "coralstaff": 27, "crystalwand": 26, "hammer": 16, "steamhammer": 35}
-TWO_HAND = {"firespear": 14}
+GRIP_ROW = {"firespear": 44, "coralstaff": 27, "crystalwand": 26, "hammer": 16, "steamhammer": 35, "sakurakatana": 132}
+TWO_HAND = {"firespear": 14, "sakurakatana": 24}
 # the standing pictures (48 x 48) have no room for the battle's lean: a long weapon stands more upright there, its hand
 # placed where it fits
-PIC_TILT = {"firespear": 28}
-PIC_HOLD = {"firespear": (16 + 7, 32 - 14), "coralstaff": (16 + 11, 32 - 12), "crystalwand": (16 + 11, 32 - 12)}
+PIC_TILT = {"firespear": 28, "sakurakatana": 24}
+PIC_HOLD = {"firespear": (16 + 7, 32 - 14), "sakurakatana": (16 + 8, 32 - 12), "coralstaff": (16 + 11, 32 - 12), "crystalwand": (16 + 11, 32 - 12)}
 # held close by the body in the back hand (a blade leaning back stays inside the picture)
 NEAR_BACK = {"dagger"}
 # mirrored in the front hand, so the blade's edge faces out, away from the body
@@ -163,7 +163,8 @@ def res_of(name):
 
 
 # (any weapon shown at another size than FINE_SHOW)
-SHOW = {"steamhammer": 0.5, "stormstar": 0.5}
+# (the sakura katana is the owner's picture as drawn - 4 art px per world px, its detail kept in the game)
+SHOW = {"steamhammer": 0.5, "stormstar": 0.5, "sakurakatana": 0.25}
 
 
 def show_of(name):
@@ -238,12 +239,17 @@ HEROES = {
     # Kuroha (the owner's new ninja, Kuroha.aseprite): a giant shuriken, PixelLab redrawn after the owner's green one in
     # violet and electric blue (candidate 10), held by its hub; fine, shown at half
     "kuroha": (None, None, "stormstar", None),
+    # Astraea (the owner's Mythic swordswoman, Astraea.aseprite): the owner's sakura katana AS DRAWN (sakura_katana.png,
+    # 168 px long; sakurakatana.png is it turned point up, no pixels lost), shown at a quarter, in both hands, leaning
+    # forward
+    "astraea": (None, None, "sakurakatana", None),
 }
 
 # looks the owner drew (an Aseprite sheet each) - used as drawn, not inpainted. All of them now: the seven starters
 # were redrawn by the owner (the inpainted <look>.png pictures are only the fallback for a look missing here).
 OWN_ART = {look: f"{look}.aseprite" for look in HEROES}
 OWN_ART["kuroha"] = "Kuroha.aseprite"  # (the owner named the file with a capital)
+OWN_ART["astraea"] = "Astraea.aseprite"
 
 FULL = (48, 48)
 AT = (8, 12)  # where the 32x32 frame sits on the full picture
@@ -289,6 +295,8 @@ def put(canvas, im, anchor, point, s=1, show=1, tilt=0):
     k = s * show
     if k == 0.5:
         im = half(im)
+    elif k == 0.25:
+        im = half(half(im))
     elif k != 1:
         im = im.resize((max(1, round(im.width * k)), max(1, round(im.height * k))), Image.NEAREST)
     ax, ay = (anchor[0] + 1) * k, (anchor[1] + 1) * k
@@ -430,7 +438,11 @@ def find_legs(whole, leg1, leg2):
     return sorted([best[1], best[2]])
 
 
-def own_parts(path):
+# the back hair (head_back) raised this many px from where it sits on the owner's put-together figure (the owner's call)
+HEAD_BACK_UP = {"astraea": 5}
+
+
+def own_parts(path, look=""):
     """The parts of a hero the owner drew: found on the put-together figure, moved so the legs stand where the
     master's do (left leg's left edge at x 10, feet on the frame's bottom row)."""
     import numpy as np
@@ -455,6 +467,7 @@ def own_parts(path):
         bx, by = at["body"]
         hide[by:by + crop["body"].height, bx:bx + crop["body"].width] |= np.asarray(crop["body"])[..., 3] > 0
         _, *at["head_back"] = find(whole, crop["head_back"], hide)
+        at["head_back"][1] -= HEAD_BACK_UP.get(look, 0)
     # move the figure: left leg's left edge to x 10, the feet onto row 31
     dx = 10 - at["leg_1"][0]
     dy = 31 - (max(at["leg_1"][1], at["leg_2"][1]) + crop["leg_1"].height - 1)
@@ -491,7 +504,7 @@ def build():
     bald = Image.open(os.path.join(P.SRC, "_bald_head.png")).convert("RGBA")
     for look, (eye, boots, front, back) in HEROES.items():
         if look in OWN_ART:
-            head, body, leg_l, leg_r = own_parts(os.path.join(SRC, OWN_ART[look]))
+            head, body, leg_l, leg_r = own_parts(os.path.join(SRC, OWN_ART[look]), look)
         else:
             pic = Image.open(os.path.join(SRC, f"{look}.png")).convert("RGBA")
             head, body, leg_l, leg_r = cut(pic, bald, eye, boots)
