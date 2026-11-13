@@ -20,7 +20,7 @@ import './battle.css';
 // stretched or squeezed. Each part has its own shape:
 //   top left      the turn in a gold octagon; under it the turn order as chips (the next one big, gold)
 //   top middle    both teams' HP as parallelogram bars leaning away from the VS crest, the numbers on plates
-//   top right     settings / AUTO / speed as small steel buttons
+//   top right     AUTO / speed / settings as small steel buttons
 //   bottom left   whoever's turn it is: its picture in a window, a ribbon, name, LV, element, HP, statuses
 //   bottom right  the team's energy crystals over its three moves (a steel square for the basic attack, gold
 //                 octagons for the skills; key, cost, name on each)
@@ -312,7 +312,8 @@ export class BattleHud {
     this.root = h('div', { class: 'battle-ui' },
       h('div', { class: 'bt-left' }, this.turnEl, this.rail),
       h('div', { class: 'bt-top' }, team(0), vs, team(1)),
-      h('div', { class: 'bt-side' }, btn('ตั้งค่า', ico(GEAR), () => this.menu.classList.toggle('open')), this.autoBtn, this.speedBtn),
+      // (settings at the far right - the owner's call)
+      h('div', { class: 'bt-side' }, this.autoBtn, this.speedBtn, btn('ตั้งค่า', ico(GEAR), () => this.menu.classList.toggle('open'))),
       this.dock,
       this.assistBox,
       this.menu,
