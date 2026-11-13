@@ -126,8 +126,12 @@ registerPanel('bag', {
                     const g = 500 + Math.floor(Math.random() * 10) * 250;
                     player.gold += g;
                     showRewards([{ icon: 'gold', amount: g, label: 'ทอง' }], 'เปิดหีบสมบัติ!');
+                  } else if (id === 'potion' || id === 'revive') {
+                    // used on a hero: from the team bar on the map (ui/party.ts)
+                    toast('แตะรูปฮีโร่ในแถบทีมด้านซ้ายของจอเพื่อใช้');
+                    return;
                   } else {
-                    toast(`${it.name}: ใช้ได้เมื่อระบบต่อสู้เปิด`);
+                    toast(`${it.name}: ยังใช้ไม่ได้`);
                     return;
                   }
                   player.items[id]--;

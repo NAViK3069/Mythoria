@@ -3,7 +3,8 @@ import { heroTeam, monsterTeam, reserveTeam } from '@mythoria/combat';
 import { setTexPrefix } from '../art/texPrefix';
 import { playTransition } from '../ui/transition';
 import { hudReserve, narrowScreen } from '../ui/battleHud';
-import { player } from '../ui/store';
+import { changed, player } from '../ui/store';
+import { fitTeam, hpShare, setHp } from '../ui/vitals';
 import { Ambience } from '../world/Ambience';
 import { ARENA_CENTER, buildArena } from '../world/arenaMap';
 import { BattleStage } from '../world/BattleStage';
@@ -59,18 +60,22 @@ export class BattleScene extends Phaser.Scene {
     this.scale.on('resize', onResize);
 
     const k = () => cam.zoom / this.scale.displayScale.x;
-    this.stage = new BattleStage(this, { ...ARENA_CENTER }, heroTeam(player.team), monsterTeam(data.foes), data.seed, {
+    // heroes come in with their lasting HP; the fallen stay out (ui/vitals.ts)
+    this.stage = new BattleStage(this, { ...ARENA_CENTER }, heroTeam(fitTeam(player.team), 1, hpShare), monsterTeam(data.foes), data.seed, {
       project: (x, y) => ({ x: (x - cam.worldView.x) * k(), y: (y - cam.worldView.y) * k() }),
       sort: (x, y, w, h) => this.view.depthFor(x, y, w, h),
-      done: (result) => {
+      done: (result, heroes) => {
         this.stage = null;
+        // what they have left is what they keep
+        for (const hh of heroes) setHp(hh.id, hh.hp, hh.max);
+        changed();
         // the same blade wipes back to the map
         playTransition(() => {
           data.done(result);
           this.scene.stop();
         });
       },
-    }, reserveTeam(player.reserves ?? []));
+    }, reserveTeam(fitTeam(player.reserves ?? [])));
     this.events.once('shutdown', () => {
       this.scale.off('resize', onResize);
       // the arena's own textures go with it (the world's were there before it came)

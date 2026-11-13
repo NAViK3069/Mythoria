@@ -17,7 +17,8 @@ export function rewardChips(r: { gems?: number; gold?: number }): HTMLElement {
 
 /** Items the bag knows about (sample set until game-data has the real list). */
 export const ITEMS: Record<string, { name: string; icon: string; kind: 'item' | 'material'; desc: string }> = {
-  potion: { name: 'ยาฟื้นฟู', icon: 'potion', kind: 'item', desc: 'ฟื้นฟูพลังชีวิตฮีโร่ระหว่างการผจญภัย' },
+  potion: { name: 'ยาฟื้นฟู', icon: 'potion', kind: 'item', desc: 'ฟื้นเลือดฮีโร่ 1 ตัว 40% ของเลือดสูงสุด (เลือดฮีโร่ไม่ฟื้นเอง) — แตะรูปฮีโร่ในแถบทีมด้านซ้ายเพื่อใช้' },
+  revive: { name: 'ยาชุบชีวิต', icon: 'revive', kind: 'item', desc: 'ชุบชีวิตฮีโร่ที่ล้มด้วยเลือด 50% (ไม่งั้นต้องรอให้ฟื้นเอง) — แตะรูปฮีโร่ที่ล้มในแถบทีมเพื่อใช้' },
   chest: { name: 'หีบสมบัติ', icon: 'chest', kind: 'item', desc: 'เปิดเพื่อรับทองแบบสุ่ม' },
   key: { name: 'กุญแจทอง', icon: 'key', kind: 'material', desc: 'ใช้ไขประตูหรือหีบพิเศษ' },
   book: { name: 'ตำราเวท', icon: 'book', kind: 'material', desc: 'วัตถุดิบสำหรับอัปเกรดสกิลฮีโร่' },

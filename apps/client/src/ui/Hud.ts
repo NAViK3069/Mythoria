@@ -15,6 +15,7 @@ const GLYPH_CHEVRON_UP = ['...##...', '..####..', '.##..##.', '##....##'];
 const MM_FOLD_KEY = 'mythoria.minimap.folded';
 import { frame, openPanel, registerPanel } from './Modal';
 import { avatar } from './panels/common';
+import { partyBar } from './party';
 import { changed, claimableQuests, onChange, player, progressQuests, unreadMail } from './store';
 
 export { uiBlocking } from './Modal';
@@ -200,6 +201,7 @@ export function createHud(getFps: () => number): Hud {
     coin('energy', () => player.energy, (n) => `${n}/${player.energyMax}`, () => openPanel('shop', 'featured')));
   const system = h('div', { class: 'row-icons' },
     iconButton('announce', '', 'news', 'small'),
+    iconButton('friends', '', 'friends', 'small'),
     iconButton('mail', '', 'mail', 'small', unreadMail),
     iconButton('settings', '', 'settings', 'small'));
 
@@ -240,21 +242,45 @@ export function createHud(getFps: () => number): Hud {
   });
   let mm: ReturnType<typeof mapLayer> | null = null;
 
-  // ---- bottom: chat preview, dock, play
-  const chatText = h('div', { class: 't' });
-  const chatPeek = frame('chat-peek', h('div', { class: 'ch-ico' }, icon('chat', 22)), chatText);
-  chatPeek.addEventListener('click', () => openPanel('chat'));
-  const dock = frame('dock',
+  // ---- the chat, running up the left side of the screen: the last few lines, a new one comes in at the bottom and
+  // pushes the others up; they dim after a while (still readable) - tap it to open the chat
+  const FEED_LINES = 5;
+  const chatList = h('div', { class: 'cf-list' });
+  const chatFeed = h('div', { class: 'chat-feed', role: 'button', 'aria-label': 'แชท', title: 'เปิดแชท', onclick: () => openPanel('chat') },
+    h('div', { class: 'cf-head' }, icon('chat', 16), h('span', null, 'แชท')),
+    chatList);
+  let shownChat = 0;
+  const CH: Record<string, string> = { world: 'โลก', guild: 'กิลด์', private: 'ส่วนตัว', system: 'ระบบ' };
+  const feedChat = () => {
+    const all = player.chat;
+    if (all.length === shownChat && chatList.childElementCount) return;
+    const fresh = all.length > shownChat ? all.length - shownChat : 0;
+    shownChat = all.length;
+    chatList.replaceChildren(...all.slice(-FEED_LINES).map((c, i, arr) => {
+      const isNew = i >= arr.length - fresh && Date.now() - c.time < 15000;
+      return h('div', { class: `cf-line ch-${c.channel}${isNew ? ' new' : ''}` },
+        h('span', { class: 'cf-ch' }, CH[c.channel] ?? ''), h('b', null, c.from), h('span', { class: 'cf-t' }, c.text));
+    }));
+  };
+
+  // ---- the team down the left side with their lasting HP (ui/party.ts), under the quest tracker
+  const party = partyBar();
+
+  // ---- bottom: the dock, its two wings either side of the great play-mode button in the middle
+  const wingL = frame('dock wing-l',
     iconButton('bag', 'กระเป๋า', 'bag'),
-    iconButton('team', 'ทีม', 'team'),
+    iconButton('team', 'ทีม', 'team'));
+  const wingR = frame('dock wing-r',
     iconButton('heroes', 'ฮีโร่', 'heroes'),
-    iconButton('friends', 'เพื่อน', 'friends'),
-    iconButton('guild', 'กิลด์', 'guild'),
-    iconButton('chat', 'แชท', 'chat'));
+    iconButton('guild', 'กิลด์', 'guild'));
   const play = h('button', { class: 'play', onclick: () => openPanel('modes'), title: 'โหมดเล่น', 'aria-label': 'โหมดเล่น' },
-    h('div', { class: 'emblem' }, h('div', { class: 'ring' }), h('div', { class: 'core' }, icon('battle', 44))),
-    h('div', { class: 'plate px-cut' },
-      h('div', { class: 'txt' }, h('span', { class: 'big' }, 'โหมดเล่น'), h('span', { class: 'sub' }, 'ผจญภัย • PvP • บอสเรด'))));
+    h('div', { class: 'emblem' },
+      h('div', { class: 'halo' }),
+      h('div', { class: 'ring' }),
+      h('div', { class: 'ring r2' }),
+      h('div', { class: 'core' }, icon('battle', 48))),
+    h('div', { class: 'pl-ribbon px-cut' }, h('span', { class: 'big' }, 'ต่อสู้')));
+  const dock = h('div', { class: 'dock-bar' }, wingL, play, wingR);
 
   // name + level floating over the master (HTML, so Thai stays sharp at any zoom)
   const npLv = h('span', { class: 'np-lv num' });
@@ -268,7 +294,9 @@ export function createHud(getFps: () => number): Hud {
     nameplate,
     h('div', { class: 'hud-top-left' }, profile, tracker),
     h('div', { class: 'hud-top-right' }, h('div', { class: 'top-row' }, wallet, system), h('div', { class: 'mid-row' }, side, minimap)),
-    h('div', { class: 'hud-bottom' }, chatPeek, dock, play),
+    chatFeed,
+    party,
+    h('div', { class: 'hud-bottom' }, dock),
     areaBanner,
     fps,
   );
@@ -287,8 +315,7 @@ export function createHud(getFps: () => number): Hud {
     trackKind.textContent = q ? KIND[q.group] : 'เควส';
     trackBar.style.width = q ? `${(q.progress / q.goal) * 100}%` : '100%';
     trackText.replaceChildren(q ? q.title : 'ทำเควสครบแล้ว!', q ? h('span', { class: 'p num' }, done ? '✓ รับรางวัล' : `${fmt(q.progress)}/${fmt(q.goal)}`) : '');
-    const last = player.chat[player.chat.length - 1];
-    chatText.replaceChildren(last ? h('b', null, `[${last.from}] `) : '', last ? last.text : '');
+    feedChat();
     fps.style.display = player.settings.showFps ? '' : 'none';
     mm?.update();
   };
@@ -297,6 +324,31 @@ export function createHud(getFps: () => number): Hud {
   setInterval(() => {
     if (player.settings.showFps) fps.textContent = `${Math.round(getFps())} FPS`;
   }, 500);
+
+  // a phone held upright: the chat sits top left, just under the minimap (it follows the map folding / unfolding);
+  // elsewhere it runs up the left side above the dock (the CSS's place)
+  const placeChat = () => {
+    // the team bar: under the quest tracker (or the profile, where the tracker is hidden); on an upright phone a column
+    // down the left under the chat (kept off the bottom, where the walk / talk / fight prompts come up)
+    const below = tracker.offsetHeight ? tracker : profile;
+    let py = 0;
+    for (let e: HTMLElement | null = below; e && e !== root; e = e.offsetParent as HTMLElement | null) py += e.offsetTop;
+    party.style.top = window.innerWidth > 560 ? `${py + below.offsetHeight + 10}px` : '';
+    if (window.innerWidth > 560) {
+      chatFeed.style.top = '';
+      return;
+    }
+    let y = 0;
+    for (let e: HTMLElement | null = minimap; e && e !== root; e = e.offsetParent as HTMLElement | null) y += e.offsetTop;
+    const chatTop = y + minimap.offsetHeight + 8;
+    chatFeed.style.top = `${chatTop}px`;
+    party.style.top = `${chatTop + chatFeed.offsetHeight + 8}px`;
+  };
+  window.addEventListener('resize', placeChat);
+  new ResizeObserver(placeChat).observe(minimap);
+  new ResizeObserver(placeChat).observe(tracker);
+  new ResizeObserver(placeChat).observe(chatFeed);
+  setTimeout(placeChat, 0);
 
   // first visit: point at the welcome mail
   if (unreadMail()) setTimeout(() => toast('มีจดหมายใหม่ — ดูที่ไอคอนซองจดหมายมุมขวาบน'), 4200);
@@ -319,7 +371,7 @@ export function createHud(getFps: () => number): Hud {
     insets() {
       const W = window.innerWidth, H = window.innerHeight;
       const out = { top: 0, bottom: 0, left: 0, right: 0 };
-      for (const el of [profile, tracker, wallet, system, side, minimap, chatPeek, dock, play]) {
+      for (const el of [profile, tracker, wallet, system, side, minimap, wingL, wingR, play]) {
         // where layout puts it (not where it is mid-slide: the menus slide in when the HUD appears)
         let x = 0, y = 0;
         for (let e: HTMLElement | null = el; e && e !== root; e = e.offsetParent as HTMLElement | null) (x += e.offsetLeft), (y += e.offsetTop);

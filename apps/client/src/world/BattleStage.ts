@@ -98,7 +98,8 @@ export interface StageHooks {
   /** Where something at (x, y) goes in the draw order. */
   sort(x: number, y: number, w: number, h: number): number;
   /** It's over: back to walking about. */
-  done(result: 'win' | 'lose' | 'draw' | 'flee'): void;
+  /** It's over: the result, and what our heroes on the field have left (their lasting HP - 0 if they fell). */
+  done(result: 'win' | 'lose' | 'draw' | 'flee', heroes: { id: string; hp: number; max: number }[]): void;
 }
 
 export class BattleStage {
@@ -809,7 +810,8 @@ export class BattleStage {
       a.img?.destroy();
       a.shadow?.destroy();
     }
-    this.hooks.done(result);
+    const heroes = this.battle.units.filter((u) => u.team === 0).map((u) => ({ id: u.id, hp: u.alive ? u.hp : 0, max: u.maxHp }));
+    this.hooks.done(result, heroes);
   }
 }
 

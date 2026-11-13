@@ -298,7 +298,7 @@ export class Battle {
     return {
       uid, id: u.id, name: u.name, look: u.look, miniBoss: u.miniBoss,
       level: u.level ?? 1, team: t, row: u.row, lane: u.lane,
-      hp: s.hp, maxHp: s.hp, atk: s.atk, def: s.def, spd,
+      hp: u.hpShare != null ? Math.max(1, Math.min(s.hp, Math.round(s.hp * u.hpShare))) : s.hp, maxHp: s.hp, atk: s.atk, def: s.def, spd,
       crit: s.crit, critDmg: s.critDmg, evade: s.evade, hit: s.hit, skillEvade: s.skillEvade, skillHit: s.skillHit,
       statusRes: s.statusRes, skillDmgRes: s.skillDmgRes, normalDmgRes: s.normalDmgRes,
       element: u.element, role: u.role ?? 'warrior', skills: u.skills, passives: u.passives ?? [],

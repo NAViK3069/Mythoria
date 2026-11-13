@@ -25,6 +25,8 @@ import { renderMinimap } from '../world/minimap';
 import { BEYOND, TILE, waterAt, type Door, type Footprint, type MeadowMap, type ShapeOf } from '../world/meadowMap';
 import { NAV_CELL, NavGrid, pushOut, type Point } from '../world/pathfind';
 import { clearPlace, flushSave, player, savePlace, type SavedPlace } from '../ui/store';
+import { toast } from '../ui/dom';
+import { fitTeam, wakeFallen } from '../ui/vitals';
 
 /** The textures that exist when the world first starts (art loaded at boot); everything else is per map. */
 let bootTextures: Set<string> | null = null;
@@ -67,6 +69,9 @@ export class WorldScene extends Phaser.Scene {
   private warps!: Warps;
   /** The warp pad the hero stands on. */
   private padHere: string | null = null;
+  /** The pad under the hero's feet, warping or not (undefined until the first frame: landing on a pad by warp
+   * doesn't count as stepping onto it). Stepping onto one opens the warp panel by itself. */
+  private padRaw: string | null | undefined = undefined;
   /** The door the hero stands at. */
   private door: Door | null = null;
   private mapId: MapId = START_MAP;
@@ -99,6 +104,7 @@ export class WorldScene extends Phaser.Scene {
     // (a battle's arena keeps its own, 'bt:...')
     else for (const k of this.textures.getTextureKeys()) if (!bootTextures.has(k) && !k.startsWith('bt:')) this.textures.remove(k);
     this.padHere = null;
+    this.padRaw = undefined;
     this.door = null;
     this.leaving = false;
     // Starting the game (not travelling): back to the map and spot saved last time, if that map still exists.
@@ -420,6 +426,13 @@ export class WorldScene extends Phaser.Scene {
       this.padHere = pad;
       warpPrompt(pad);
     }
+    // walked onto a pad: its destinations open at once (no E); not on landing there by warp, and only once per step on
+    const raw = this.warps.padAt(m.x, m.y)?.id ?? null;
+    if (this.padRaw === undefined) this.padRaw = raw;
+    else if (raw !== this.padRaw) {
+      this.padRaw = raw;
+      if (raw && !this.warps.busy && !uiBlocking()) openWarpPanel();
+    }
     // someone to talk to (and the one you walked over to talk to: talk now)
     const npc = this.warps.busy || pad ? null : this.npcs.near(m.x, m.y);
     if (npc !== this.npcHere) {
@@ -554,6 +567,12 @@ export class WorldScene extends Phaser.Scene {
    */
   private startBattle(mo: Monster): void {
     if (this.battling) return;
+    // nobody in the team who can fight (all down): heal or revive them first
+    wakeFallen();
+    if (!fitTeam(player.team).length) {
+      toast('ฮีโร่ในทีมล้มหมด — ใช้ยาชุบชีวิต หรือรอให้ฟื้นก่อน');
+      return;
+    }
     // a refresh mid-battle comes back here, on the map (the battle itself isn't resumed)
     this.keepPlace(true);
     this.battling = true;

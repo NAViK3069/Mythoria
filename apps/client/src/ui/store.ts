@@ -46,6 +46,11 @@ export interface OwnedHero {
   stars: number;
   /** Spare copies of it, fed in for stars. */
   copies: number;
+  /** Its lasting HP as a share of its max (0..1; missing = full) - what it ended its last battle with, until healed
+   * (ui/vitals.ts). 0 = down. */
+  hp?: number;
+  /** When it fell (ms): it gets up by itself VITALS.reviveMinutes later. */
+  downAt?: number;
 }
 
 export interface Settings {
@@ -129,7 +134,7 @@ function fresh(): PlayerState {
     energy: 120,
     energyMax: 120,
     steps: 0,
-    items: { potion: 3, chest: 1, key: 1, book: 1 },
+    items: { potion: 3, revive: 1, chest: 1, key: 1, book: 1 },
     loginDays: 0,
     loginLast: '',
     mail: [
@@ -185,6 +190,8 @@ function load(): PlayerState {
       // the special team: heroes the player has, not already in the team
       const own = (id: string) => p.heroes.some((h) => h.id === id) && !p.team.includes(id);
       p.reserves = (Array.isArray(p.reserves) ? p.reserves : DEFAULT_RESERVES).filter(own).slice(0, RESERVE_SIZE);
+      // a save from before revive potions: one to start with
+      if (p.items.revive == null) p.items = { ...p.items, revive: 1 };
       if (!validPlace(p.place)) delete p.place;
       return p;
     }

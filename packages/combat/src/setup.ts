@@ -61,10 +61,15 @@ export function formation<T extends { role?: Role }>(list: T[]): { item: T; row:
   return [...front.map((item, lane) => ({ item, row: 'front' as Row, lane })), ...back.map((item, lane) => ({ item, row: 'back' as Row, lane }))];
 }
 
-/** A party of heroes (ids; up to 5) as battle units. */
-export function heroTeam(ids: string[], level = 1): UnitSetup[] {
+/** A party of heroes (ids; up to 5) as battle units; `hpOf` gives each one's lasting HP as a share of its max (0..1,
+ * undefined = full). */
+export function heroTeam(ids: string[], level = 1, hpOf?: (id: string) => number | undefined): UnitSetup[] {
   const defs = ids.map((id) => heroById(id)).filter((d): d is HeroDef => !!d);
-  return formation(defs.map((d) => ({ d, role: d.class as Role }))).map(({ item, row, lane }) => heroUnit(item.d, row, lane, level));
+  return formation(defs.map((d) => ({ d, role: d.class as Role }))).map(({ item, row, lane }) => {
+    const u = heroUnit(item.d, row, lane, level), f = hpOf?.(item.d.id);
+    if (f != null && f < 1) u.hpShare = f;
+    return u;
+  });
 }
 
 /** The special team (reserves, ids): off the field - called in by a fighter to cast its skill 1. */

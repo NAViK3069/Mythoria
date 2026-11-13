@@ -107,4 +107,6 @@ export interface UnitSetup {
   /** Its picture (the client draws it). */
   look?: string;
   miniBoss?: boolean;
+  /** HP it comes into the battle with, as a share of its max (0..1 - a hero's lasting HP); full when not given. */
+  hpShare?: number;
 }
