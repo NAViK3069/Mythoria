@@ -72,6 +72,22 @@ export function heroTeam(ids: string[], level = 1, hpOf?: (id: string) => number
   });
 }
 
+/**
+ * A party the player lined up by hand: `front` (up to 2) in the front row, `back` (up to 3) in the back row, in the
+ * order given. If nobody's left in front (the fallen are left out before this), the first of the back row steps up.
+ */
+export function heroLineup(front: string[], back: string[], level = 1, hpOf?: (id: string) => number | undefined): UnitSetup[] {
+  const defs = (ids: string[]) => ids.map((id) => heroById(id)).filter((d): d is HeroDef => !!d);
+  const f = defs(front).slice(0, 2), b = defs(back).slice(0, 3);
+  if (!f.length && b.length) f.push(b.shift()!);
+  const unit = (d: HeroDef, row: Row, lane: number) => {
+    const u = heroUnit(d, row, lane, level), share = hpOf?.(d.id);
+    if (share != null && share < 1) u.hpShare = share;
+    return u;
+  };
+  return [...f.map((d, i) => unit(d, 'front', i)), ...b.map((d, i) => unit(d, 'back', i))];
+}
+
 /** The special team (reserves, ids): off the field - called in by a fighter to cast its skill 1. */
 export function reserveTeam(ids: string[], level = 1): UnitSetup[] {
   return ids.map((id) => heroById(id)).filter((d): d is HeroDef => !!d).map((d, i) => heroUnit(d, 'back', i, level));

@@ -221,6 +221,8 @@ export interface HudHooks {
   /** A move's icon (an <img>, 32 px). */
   moveIcon(u: Unit, action: ActionName): HTMLElement;
   flee(): void;
+  /** Watch the rest on the map (it carries on there on auto) - given: the settings menu offers it. */
+  fold?(): void;
 }
 
 /** What the player chose: a move of the one whose turn it is, or `caster` - the special team's one it calls in. */
@@ -307,8 +309,17 @@ export class BattleHud {
     this.speedBtn = btn('ความเร็ว', h('span', { class: 'bt-speed' }, ico(FAST), px('x1')), () => this.setFast(!this.fast));
     this.menu = h('div', { class: 'bt-menu k-panel' },
       h('div', { class: 'bt-menu-title' }, 'หยุดพัก'),
-      h('button', { class: 'bt-btn k-btn', onclick: () => hooks.flee() }, 'หนีออกจากการต่อสู้'),
-      h('button', { class: 'bt-btn k-btn', onclick: () => this.menu.classList.remove('open') }, 'เล่นต่อ'));
+      // each its own colour, so they're never mixed up: carry on (green), watch on the map (blue), run (red)
+      h('button', { class: 'bt-btn bt-m go', onclick: () => this.menu.classList.remove('open') }, 'เล่นต่อ'),
+      hooks.fold
+        ? h('button', { class: 'bt-btn bt-m map', onclick: (e: Event) => {
+          const b = e.currentTarget as HTMLButtonElement;
+          b.disabled = true;
+          b.textContent = 'กำลังออกไปดูบนแผนที่...';
+          hooks.fold?.();
+        } }, 'ดูบนแผนที่')
+        : null,
+      h('button', { class: 'bt-btn bt-m flee', onclick: () => hooks.flee() }, 'หนีออกจากการต่อสู้'));
     this.root = h('div', { class: 'battle-ui' },
       h('div', { class: 'bt-left' }, this.turnEl, this.rail),
       h('div', { class: 'bt-top' }, team(0), vs, team(1)),
@@ -397,7 +408,10 @@ export class BattleHud {
   order(current: Unit | null): void {
     const changed = this.now !== current;
     this.now = current;
-    this.turnEl.replaceChildren(px('TURN', LOOKS.uiGold), px(String(Math.max(1, this.battle.turn)), LOOKS.uiGold, 2), px(`/${TURN_LIMIT}`, LOOKS.miss));
+    // past the limit: overtime - every hit multiplied (the engine's overtimeMult), shown in red instead of /80
+    const over = this.battle.turn > TURN_LIMIT;
+    this.turnEl.replaceChildren(px('TURN', LOOKS.uiGold), px(String(Math.max(1, this.battle.turn)), LOOKS.uiGold, 2),
+      over ? px(`x${this.battle.overtimeMult.toFixed(this.battle.overtimeMult < 10 ? 2 : 0)}`, LOOKS.dmg) : px(`/${TURN_LIMIT}`, LOOKS.miss));
     // as many as fit down the left between the turn badge and the card
     const p = pixelSize();
     const room = this.root.classList.contains('narrow')

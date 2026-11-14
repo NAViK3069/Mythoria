@@ -3,6 +3,11 @@ import './style.css';
 import { BootScene } from './scenes/BootScene';
 import { WorldScene } from './scenes/WorldScene';
 import { BattleScene } from './scenes/BattleScene';
+import { setupCursors } from './ui/cursor';
+
+// our own mouse cursors (a gauntlet; a sword over a monster) - OFF for now: the owner is drawing new ones and will
+// say when to put them back (call setupCursors() here again)
+void setupCursors;
 
 // Render at the screen's real pixel density (capped at 2 for speed) so the
 // pixel art stays sharp on phones and iPads, then shrink the canvas back to CSS size.

@@ -9,11 +9,21 @@ const owned = (id: string): OwnedHero | undefined => player.heroes.find((h) => h
 
 const COOLDOWN = VITALS.reviveMinutes * 60_000;
 
+/** Is it the leader of the team in use? (The leader never stays down: VITALS.leaderRevivePct.) */
+export function isLeader(id: string): boolean {
+  return player.teams[player.activeTeam]?.leader === id;
+}
+
 /** A fallen hero whose wait is over gets up (with VITALS.reviveHpPct). True if anyone did. */
 export function wakeFallen(now = Date.now()): boolean {
   let any = false;
   for (const h of player.heroes)
-    if (h.hp === 0 && (h.downAt == null || now - h.downAt >= COOLDOWN)) {
+    if (h.hp === 0 && isLeader(h.id)) {
+      // (made leader while it was down: up at once)
+      h.hp = VITALS.leaderRevivePct / 100;
+      delete h.downAt;
+      any = true;
+    } else if (h.hp === 0 && (h.downAt == null || now - h.downAt >= COOLDOWN)) {
       h.hp = VITALS.reviveHpPct / 100;
       delete h.downAt;
       any = true;
@@ -42,7 +52,11 @@ export function setHp(id: string, hp: number, max: number): void {
   const h = owned(id);
   if (!h) return;
   const share = Math.max(0, Math.min(1, hp / Math.max(1, max)));
-  if (share <= 0) {
+  if (share <= 0 && isLeader(id)) {
+    // the leader never stays down: back up at once
+    h.hp = VITALS.leaderRevivePct / 100;
+    delete h.downAt;
+  } else if (share <= 0) {
     if (h.hp !== 0) h.downAt = Date.now();
     h.hp = 0;
   } else {

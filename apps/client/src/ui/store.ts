@@ -1,7 +1,7 @@
 // Player data the UI shows. For now it lives in this browser (sample values,
 // saved to localStorage); later it comes from the server through GameService.
 
-import { HEROES, STARTER_HEROES } from '@mythoria/game-data';
+import { HEROES, STARTER_HEROES, heroById } from '@mythoria/game-data';
 
 /**
  * Local sample data only (no summoning yet): the player also gets every other hero, so the owner's new heroes can be
@@ -46,6 +46,8 @@ export interface OwnedHero {
   stars: number;
   /** Spare copies of it, fed in for stars. */
   copies: number;
+  /** Marked as a favourite (the team builder sorts these first). */
+  fav?: boolean;
   /** Its lasting HP as a share of its max (0..1; missing = full) - what it ended its last battle with, until healed
    * (ui/vitals.ts). 0 = down. */
   hp?: number;
@@ -58,6 +60,8 @@ export interface Settings {
   sfx: number;
   effects: 'high' | 'low';
   showFps: boolean;
+  /** Fights stay on the map on auto (true, the default); false: every fight opens the turn-based screen. */
+  autoFight?: boolean;
   language: 'th' | 'en';
 }
 
@@ -86,11 +90,16 @@ export interface PlayerState {
   startersGiven: boolean;
   /** Which SAMPLE_HEROES hand-out this player has had (local sample data). */
   sampleHeroes?: number;
-  /** Who fights: up to 5 hero ids (the battle puts tanks and warriors in front). */
+  /** The teams the player has set up (panels/team.ts); `activeTeam` is the one that fights. */
+  teams: TeamSetup[];
+  activeTeam: number;
+  /** The active team's fighters (front row first) - kept in step with `teams` by syncTeam(). */
   team: string[];
-  /** The special team: up to 2 hero ids, off the field - a fighter calls one in to cast its skill 1. */
+  /** The active team's special team: up to 2 hero ids, off the field - a fighter calls one in to cast a skill. */
   reserves: string[];
   settings: Settings;
+  /** Monsters beaten, by monster id (how many times): beating a kind once is what will unlock farming it on auto. */
+  beaten?: Record<string, number>;
   /** Where the master character stands (to come back to the same spot after a refresh / next time). */
   place?: SavedPlace;
 }
@@ -118,6 +127,86 @@ export const TEAM_SIZE = 5;
 /** The first special team: the two starters not in the first team. */
 export const DEFAULT_RESERVES = ['fen', 'pip'];
 export const RESERVE_SIZE = 2;
+/** A team's rows: 2 in front, 3 behind (the player picks who stands where). */
+export const FRONT_SIZE = 2;
+export const BACK_SIZE = 3;
+/** How many teams can be set up. */
+export const MAX_TEAMS = 10;
+
+/** One team as the player set it up: hero ids by slot (null = empty). */
+export interface TeamSetup {
+  name: string;
+  front: (string | null)[];
+  back: (string | null)[];
+  special: (string | null)[];
+  /** The team's leader (shown with a crown): one of its heroes on the field; every team with any has one. */
+  leader?: string | null;
+}
+
+/** Keep the leader one of the team's heroes on the field (front or back); if it isn't, the first of them. */
+export function fixLeader(t: TeamSetup): void {
+  const field = [...t.front, ...t.back].filter((id): id is string => !!id);
+  if (!t.leader || !field.includes(t.leader)) t.leader = field[0] ?? null;
+}
+
+/** A team from a plain list (an older save, the defaults): tanks and warriors to the front while it has room. */
+export function teamFromList(name: string, fighters: string[], reserves: string[] = []): TeamSetup {
+  const t = emptyTeam(name);
+  const frontish = (id: string) => ['tank', 'warrior'].includes(heroById(id)?.class ?? '');
+  const rest: string[] = [];
+  for (const id of fighters) {
+    const i = t.front.indexOf(null);
+    if (frontish(id) && i >= 0) t.front[i] = id;
+    else rest.push(id);
+  }
+  for (const id of rest) {
+    const i = t.back.indexOf(null), j = t.front.indexOf(null);
+    if (i >= 0) t.back[i] = id;
+    else if (j >= 0) t.front[j] = id;
+  }
+  reserves.slice(0, RESERVE_SIZE).forEach((id, i) => (t.special[i] = id));
+  fixLeader(t);
+  return t;
+}
+
+export function emptyTeam(name: string): TeamSetup {
+  return { name, front: Array(FRONT_SIZE).fill(null), back: Array(BACK_SIZE).fill(null), special: Array(RESERVE_SIZE).fill(null) };
+}
+
+/** The active team, by rows (empty slots left out). */
+export function lineup(p: PlayerState = player): { front: string[]; back: string[]; special: string[] } {
+  const t = p.teams[p.activeTeam] ?? p.teams[0];
+  const ids = (a: (string | null)[] | undefined) => (a ?? []).filter((id): id is string => !!id);
+  return { front: ids(t?.front), back: ids(t?.back), special: ids(t?.special) };
+}
+
+/** Copy the active team into `team` / `reserves` (what the battle and the team bar read). */
+export function syncTeam(p: PlayerState = player): void {
+  const l = lineup(p);
+  p.team = [...l.front, ...l.back];
+  p.reserves = l.special;
+}
+
+/** Make a saved team sound: the right number of slots, heroes the player has, each once. */
+function fitSetup(t: Partial<TeamSetup> | null | undefined, i: number, owns: (id: string) => boolean): TeamSetup {
+  const seen = new Set<string>();
+  const slots = (a: unknown, n: number) =>
+    Array.from({ length: n }, (_, k) => {
+      const id = Array.isArray(a) ? a[k] : null;
+      if (typeof id !== 'string' || !owns(id) || seen.has(id)) return null;
+      seen.add(id);
+      return id;
+    });
+  const out: TeamSetup = {
+    name: typeof t?.name === 'string' && t.name.trim() ? t.name.slice(0, 20) : `ทีม ${i + 1}`,
+    front: slots(t?.front, FRONT_SIZE),
+    back: slots(t?.back, BACK_SIZE),
+    special: slots(t?.special, RESERVE_SIZE),
+    leader: typeof t?.leader === 'string' ? t.leader : null,
+  };
+  fixLeader(out);
+  return out;
+}
 
 const KEY = 'mythoria.player.v1';
 
@@ -163,8 +252,10 @@ function fresh(): PlayerState {
     heroes: [...STARTER_HEROES, ...HEROES.map((d) => d.id).filter((id) => !STARTER_HEROES.includes(id))].map((id) => ({ id, level: 1, stars: 0, copies: 0 })),
     startersGiven: true,
     sampleHeroes: SAMPLE_HEROES,
-    team: [...DEFAULT_TEAM],
-    reserves: [...DEFAULT_RESERVES],
+    teams: [teamFromList('ทีม 1', DEFAULT_TEAM, DEFAULT_RESERVES)],
+    activeTeam: 0,
+    team: [],
+    reserves: [],
     settings: { music: 70, sfx: 80, effects: 'high', showFps: false, language: 'th' },
   };
 }
@@ -190,15 +281,23 @@ function load(): PlayerState {
       // the special team: heroes the player has, not already in the team
       const own = (id: string) => p.heroes.some((h) => h.id === id) && !p.team.includes(id);
       p.reserves = (Array.isArray(p.reserves) ? p.reserves : DEFAULT_RESERVES).filter(own).slice(0, RESERVE_SIZE);
+      // a save from before several teams: its one team becomes the first
+      if (!Array.isArray(p.teams) || !p.teams.length) p.teams = [teamFromList('ทีม 1', p.team, p.reserves)];
+      const owns = (id: string) => p.heroes.some((h) => h.id === id);
+      p.teams = p.teams.slice(0, MAX_TEAMS).map((t, i) => fitSetup(t, i, owns));
+      p.activeTeam = Number.isInteger(p.activeTeam) && p.activeTeam >= 0 && p.activeTeam < p.teams.length ? p.activeTeam : 0;
       // a save from before revive potions: one to start with
       if (p.items.revive == null) p.items = { ...p.items, revive: 1 };
       if (!validPlace(p.place)) delete p.place;
+      syncTeam(p);
       return p;
     }
   } catch {
     /* storage blocked: play without saving */
   }
-  return fresh();
+  const p = fresh();
+  syncTeam(p);
+  return p;
 }
 
 /** A saved place of the shape this code writes (whether the map and the spot are still good is the world's call). */

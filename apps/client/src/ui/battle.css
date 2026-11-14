@@ -382,6 +382,36 @@ body.in-battle #ui > :not(.battle-ui) {
 .bt-menu .bt-btn {
   height: calc(var(--p) * 20);
 }
+/* the settings menu's three choices, each its own colour (never mixed up): carry on green, watch on the map blue,
+   run red - flat colour with a bright edge and a darker foot, square cut corners */
+.bt-menu .bt-m {
+  border: 0;
+  font-family: var(--ui-font, 'Kanit', sans-serif);
+  font-size: calc(var(--p) * 6);
+  font-weight: 700;
+  padding: 0 calc(var(--p) * 6);
+  cursor: pointer;
+  clip-path: polygon(calc(var(--p) * 2) 0, calc(100% - var(--p) * 2) 0, 100% calc(var(--p) * 2), 100% calc(100% - var(--p) * 2), calc(100% - var(--p) * 2) 100%, calc(var(--p) * 2) 100%, 0 calc(100% - var(--p) * 2), 0 calc(var(--p) * 2));
+}
+.bt-menu .bt-m.go {
+  color: #062a14;
+  background: linear-gradient(180deg, #9cf5a8 0 12%, #4fd06a 12% 82%, #2a8a40 82%);
+}
+.bt-menu .bt-m.map {
+  color: #06202c;
+  background: linear-gradient(180deg, #a8ecff 0 12%, #4fb8e8 12% 82%, #2a6e9e 82%);
+}
+.bt-menu .bt-m.flee {
+  color: #fff2ee;
+  background: linear-gradient(180deg, #ff9c8c 0 12%, #d8402c 12% 82%, #8a1a12 82%);
+}
+.bt-menu .bt-m:hover {
+  filter: brightness(1.12);
+}
+.bt-menu .bt-m:disabled {
+  filter: grayscale(0.5);
+  cursor: default;
+}
 
 /* ---------------------------------------------------------------- the fighters: tap areas, floating words */
 .bt-unit {

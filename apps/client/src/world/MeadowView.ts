@@ -389,15 +389,22 @@ export class MeadowView {
     return d;
   }
 
-  /** Fade trees and walls the player is standing behind, so they never vanish from view. */
+  /** Others who should never vanish behind things either (set by the scene each frame): the team leader walking
+   * with you, the monster you're fighting. */
+  also: { x: number; y: number }[] = [];
+
+  /** Fade trees and walls the player (or anyone in `also`) is standing behind, so they never vanish from view. */
   update(dt: number, px: number, py: number, time: number): void {
     this.sortAround(px, py);
-    for (const t of this.things) {
+    const hides = (t: (typeof this.things)[number], x: number, y: number) => {
       const f = t.data.foot;
-      const front = f ? frontAt(f, px) : t.data.y;
+      const front = f ? frontAt(f, x) : t.data.y;
       // a tree's canopy hides you anywhere under it; a house, tent or wall only when you're really behind it
-      const across = t.data.kind === 'tree' || !f || Math.abs(px - f.x) < f.hw;
-      const behind = across && py < front - 2 && Phaser.Geom.Rectangle.Contains(t.bounds, px, py - 10);
+      const across = t.data.kind === 'tree' || !f || Math.abs(x - f.x) < f.hw;
+      return across && y < front - 2 && Phaser.Geom.Rectangle.Contains(t.bounds, x, y - 10);
+    };
+    for (const t of this.things) {
+      const behind = hides(t, px, py) || this.also.some((o) => hides(t, o.x, o.y));
       const target = behind ? 0.45 : 1;
       t.image.alpha += (target - t.image.alpha) * Math.min(1, dt * 8);
     }

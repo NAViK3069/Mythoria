@@ -26,6 +26,9 @@ export class Controls {
 
   /** Called when a click/tap sets a new target (to show the move marker). */
   onTarget?: (x: number, y: number) => void;
+  /** Is there something at this point a click means instead of walking there (a monster to attack, someone to talk
+   * to)? Then the click isn't a move at all - no target, no marker, no steering while it's held. */
+  taken?: (x: number, y: number) => boolean;
 
   constructor(private readonly scene: Phaser.Scene) {
     // no key capture: the HUD's text boxes (chat, names) must still receive these letters
@@ -38,6 +41,7 @@ export class Controls {
 
     input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (!isTouch(p)) {
+        if (this.taken?.(p.worldX, p.worldY)) return;
         this.mouse = p;
         this.target = { x: p.worldX, y: p.worldY };
         this.onTarget?.(p.worldX, p.worldY);
@@ -73,7 +77,7 @@ export class Controls {
       }
       const pr = this.press;
       if (!pr || pr.id !== p.id) return;
-      if (!pr.drag) {
+      if (!pr.drag && !this.taken?.(p.worldX, p.worldY)) {
         this.target = { x: p.worldX, y: p.worldY };
         this.onTarget?.(p.worldX, p.worldY);
       }

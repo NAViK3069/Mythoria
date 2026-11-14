@@ -74,7 +74,7 @@ interface Actor {
 
 /** A monster's frame as pixels round its feet (as MasterCharacter.snapshot gives a hero's): for the effects that take
  * a body apart (its fall). */
-function imageSnap(img: Phaser.GameObjects.Image): { pixels: Uint32Array; w: number; h: number; x: number; y: number } {
+export function imageSnap(img: Phaser.GameObjects.Image): { pixels: Uint32Array; w: number; h: number; x: number; y: number } {
   const f = img.frame, W = f.cutWidth, H = f.cutHeight;
   const c = document.createElement('canvas');
   c.width = W;
@@ -101,6 +101,8 @@ export interface StageHooks {
   /** It's over: back to walking about. */
   /** It's over: the result, and what our heroes on the field have left (their lasting HP - 0 if they fell). */
   done(result: 'win' | 'lose' | 'draw' | 'flee', heroes: { id: string; hp: number; max: number }[]): void;
+  /** Folded back to the map mid-fight (ADR 0019): the battle, at a turn's end, to carry on there. */
+  fold?(battle: Battle): void;
 }
 
 export class BattleStage {
@@ -138,12 +140,29 @@ export class BattleStage {
   /** When the last number popped off each fighter (so a few at once stack up). */
   private readonly lastPop = new Map<string, { t: number; n: number }>();
 
-  constructor(private readonly scene: Phaser.Scene, readonly center: { x: number; y: number }, heroes: UnitSetup[], foes: UnitSetup[], seed: number, private readonly hooks: StageHooks, reserves: UnitSetup[] = []) {
-    // the special team (off the field: called in to cast its skill 1)
-    this.battle = new Battle([heroes, foes], seed, [reserves, []]);
+  /** Picked up mid-fight (the map's fight, ADR 0019): no walk-in or intro, everyone where they stand, on auto. */
+  private readonly resumed: boolean;
+  /** Asked to fold back to the map: done at the end of the turn in play. */
+  private foldAsked = false;
+
+  constructor(private readonly scene: Phaser.Scene, readonly center: { x: number; y: number }, heroes: UnitSetup[], foes: UnitSetup[], seed: number, private readonly hooks: StageHooks, reserves: UnitSetup[] = [], existing?: Battle) {
+    // the special team (off the field: called in to cast its skill 1); or a battle already going (from the map)
+    this.resumed = !!existing;
+    this.battle = existing ?? new Battle([heroes, foes], seed, [reserves, []]);
     this.battle.aiLevel = ['smart', 'smart'];
     for (const u of this.battle.units) {
-      this.actors.set(u.uid, this.makeActor(u));
+      const a = this.makeActor(u);
+      if (existing) {
+        // already in place; the fallen are gone
+        a.x = a.home.x;
+        a.y = a.home.y;
+        if (!u.alive) {
+          a.hero?.setVisible(false);
+          a.img?.setVisible(false);
+          a.shadow?.setVisible(false);
+        }
+      }
+      this.actors.set(u.uid, a);
       // (from its real HP: a hero with lasting HP comes in hurt - its bar mustn't start full)
       this.bars.set(u.uid, new HpBar(u.team === 1, elColour(u), !!u.miniBoss, u.hp / Math.max(1, u.maxHp)));
     }
@@ -151,7 +170,7 @@ export class BattleStage {
     // effects on the ground (a summoning circle): just over the ground, under the fighters
     this.ground = new BattleLayer(scene, 1.45, 'fxground');
     // what each hero carries with it all battle (a lantern's flame, a smouldering axe, a Legend's frost...)
-    for (const a of this.actors.values()) this.auraOf(a);
+    for (const a of this.actors.values()) if (a.unit.alive) this.auraOf(a);
     // the HP bars, status icons, target marks and turn arrow: on a layer of their own
     // OVER everything on the field - effects, flying arrows, all of it (the owner's rule: a bar is always on top)
     this.top = new BattleLayer(scene, 9700, 'fxtop');
@@ -172,7 +191,7 @@ export class BattleStage {
       const c = this.current;
       if (c && c.unit.alive && !this.ended) turnArrow(s, c.x, this.barY(c) - 7, this.time);
     };
-    this.hud = new BattleHud(this.battle, { portrait: (u) => this.portrait(u), figure: (u) => this.art(u), moveIcon: (u, a) => moveIcon(u, a), flee: () => this.finish('flee') });
+    this.hud = new BattleHud(this.battle, { portrait: (u) => this.portrait(u), figure: (u) => this.art(u), moveIcon: (u, a) => moveIcon(u, a), flee: () => this.finish('flee'), fold: this.hooks.fold ? () => this.fold() : undefined });
     // a gold ring under whoever's turn it is
     this.ring = scene.add.ellipse(0, 0, 30, 10).setStrokeStyle(1.5, 0xffd75a, 1).setFillStyle(0xffd75a, 0.16).setDepth(1.46).setVisible(false);
     this.ringGlow = scene.add.ellipse(0, 0, 34, 12).setStrokeStyle(1, 0xfff2b0, 0.6).setDepth(1.46).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
@@ -385,14 +404,28 @@ export class BattleStage {
     return new Promise((r) => this.scene.tweens.add({ targets: a, x, y, duration: this.hud.fast ? ms / 2 : ms, ease, onComplete: () => r() }));
   }
 
+  /** Fold back to the map (ADR 0019): auto takes over, and at the end of the turn in play the battle goes back. */
+  fold(): void {
+    this.foldAsked = true;
+    this.hud.setAuto(true);
+  }
+
   private async run(): Promise<void> {
-    // the slash wipe is still opening over the field: then everyone walks in, and the battle is announced
-    await this.wait(650);
-    await Promise.all([...this.actors.values()].map((a) => this.moveTo(a, a.home.x, a.home.y, 600, 'Sine.easeOut')));
-    this.hud.intro();
-    await this.wait(1500);
+    if (this.resumed) {
+      // carrying on a fight from the map: straight on, on auto at x2 (as it was going there)
+      this.hud.setAuto(true);
+      this.hud.setFast(true);
+      await this.wait(350);
+    } else {
+      // the slash wipe is still opening over the field: then everyone walks in, and the battle is announced
+      await this.wait(650);
+      await Promise.all([...this.actors.values()].map((a) => this.moveTo(a, a.home.x, a.home.y, 600, 'Sine.easeOut')));
+      this.hud.intro();
+      await this.wait(1500);
+    }
     const b = this.battle;
     while (!b.over && !this.ended) {
+      if (this.foldAsked) return this.foldOut();
       const actor = b.nextActor();
       if (!actor) break;
       this.current = this.actors.get(actor.uid) ?? null;
@@ -796,9 +829,23 @@ export class BattleStage {
     a.hero!.setHands(g && !g.front.over ? (g.front.pose ?? 'grip') : 'open', back);
   }
 
+  /** Hand the battle back to the map (at a turn's end) and clear the stage away. */
+  private foldOut(): void {
+    if (this.ended) return;
+    this.ended = true;
+    this.teardown();
+    this.hooks.fold?.(this.battle);
+  }
+
   private finish(result: 'win' | 'lose' | 'draw' | 'flee'): void {
     if (this.ended && result !== 'flee') return;
     this.ended = true;
+    this.teardown();
+    const heroes = this.battle.units.filter((u) => u.team === 0).map((u) => ({ id: u.id, hp: u.alive ? u.hp : 0, max: u.maxHp }));
+    this.hooks.done(result, heroes);
+  }
+
+  private teardown(): void {
     this.hud.destroy();
     this.ring.destroy();
     this.layer.destroy();
@@ -814,8 +861,6 @@ export class BattleStage {
       a.img?.destroy();
       a.shadow?.destroy();
     }
-    const heroes = this.battle.units.filter((u) => u.team === 0).map((u) => ({ id: u.id, hp: u.alive ? u.hp : 0, max: u.maxHp }));
-    this.hooks.done(result, heroes);
   }
 }
 

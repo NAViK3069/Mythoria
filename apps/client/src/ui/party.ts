@@ -2,6 +2,9 @@ import { heroById } from '@mythoria/game-data';
 import { h, icon, toast } from './dom';
 import { openPanel } from './Modal';
 import { onChange, player } from './store';
+
+/** The leader of the team in use (a crown on its picture). */
+const leaderId = () => player.teams[player.activeTeam]?.leader ?? null;
 import { clock, downLeft, hpShare, isDown, usePotion, useRevive, wakeFallen } from './vitals';
 
 // The team on the map (like Honkai: Star Rail): the five heroes in the team down the left side, each with its lasting
@@ -9,6 +12,16 @@ import { clock, downLeft, hpShare, isDown, usePotion, useRevive, wakeFallen } fr
 // with no team, a tap opens the team panel.
 
 /** The bar, and a function to place it (Hud.ts puts it under the quest tracker). */
+/** While a fight runs on the map: each hero's HP in it right now (shown instead of the lasting HP, live). */
+let live: Map<string, number> | null = null;
+let redraw: (() => void) | null = null;
+
+/** Show the HP a fight on the map has them at (null: back to their lasting HP). */
+export function showLiveHp(m: Map<string, number> | null): void {
+  live = m;
+  redraw?.();
+}
+
 export function partyBar(): HTMLElement {
   const list = h('div', { class: 'pt-list' });
   const bar = h('div', { class: 'party' }, list);
@@ -64,7 +77,9 @@ export function partyBar(): HTMLElement {
       // its element: before its name (PC), on the face's bottom-left corner (an upright phone, where there's no name)
       const face = h('div', { class: 'pt-face' },
         h('div', { class: 'pt-pic px-cut' }, h('img', { src: `assets/characters/heroes/${d.look}_face.png`, alt: '', draggable: false })),
-        icon(`el_${d.element}`, 14, 'pt-el-corner'));
+        icon(`el_${d.element}`, 14, 'pt-el-corner'),
+        // the team leader: a crown on the picture's top right corner
+        id === leaderId() ? h('span', { class: 'tb-crown pt-crown', title: 'หัวหน้าทีม' }) : null);
       const fill = h('i', { class: 'pt-fill' });
       const trail = h('i', { class: 'pt-trail' });
       const hp = h('span', { class: 'pt-hp num' });
@@ -81,25 +96,28 @@ export function partyBar(): HTMLElement {
   };
   let teamKey = '';
   const refresh = () => {
-    const key = player.team.join(',');
+    const key = `${player.team.join(',')}|${leaderId()}`;
     if (key !== teamKey) {
       teamKey = key;
       build();
       return;
     }
     for (const [id, r] of rows) {
-      const s = hpShare(id), down = s <= 0;
+      const lv = live?.get(id);
+      const s = lv ?? hpShare(id), down = s <= 0;
       r.row.classList.toggle('down', down);
       r.row.classList.toggle('low', !down && s < 0.3);
       r.row.classList.toggle('mid', !down && s >= 0.3 && s < 0.6);
       // the fill moves at once; a pale trail follows it down (a loss shows as a fading strip)
       r.fill.style.width = r.trail.style.width = `${s * 100}%`;
       // (a share, not HP points: the battle's max HP has row bonuses on top of the hero's own)
-      if (down) r.hp.replaceChildren(h('span', { class: 'pt-hp-lbl' }, 'ฟื้นใน '), clock(downLeft(id)));
+      if (down && lv != null) r.hp.textContent = 'ล้ม';
+      else if (down) r.hp.replaceChildren(h('span', { class: 'pt-hp-lbl' }, 'ฟื้นใน '), clock(downLeft(id)));
       else r.hp.textContent = `${Math.round(s * 100)}%`;
     }
   };
   onChange(refresh);
+  redraw = refresh;
   // the fallen's clocks tick; one whose wait is over gets up
   setInterval(() => {
     if (!wakeFallen() && [...rows.keys()].some(isDown)) refresh();

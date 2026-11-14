@@ -8,10 +8,15 @@ import { elementIcon } from './heroes';
 
 let picture: HTMLCanvasElement | null = null;
 let fight: (() => void) | null = null;
+let fieldFight: (() => void) | null = null;
 
-/** What the fight button does (the world starts a battle with the monster whose card is open). */
-export function setFight(fn: (() => void) | null): void {
+/**
+ * What the fight buttons do (the world starts a battle with the monster whose card is open): `fn` on the turn-based
+ * screen (you choose the moves), `field` right here on the map on auto (ADR 0019).
+ */
+export function setFight(fn: (() => void) | null, field: (() => void) | null = null): void {
   fight = fn;
+  fieldFight = field;
 }
 
 /** Show a monster's card, with its picture (drawn by the world from its own frames). */
@@ -54,7 +59,8 @@ registerPanel('monster', {
           skill('ตีปกติ', def.normal.name, def.normal.text),
           def.skills.map((s) => skill('สกิล', s.name, s.text, `ทุก ${s.every} เทิร์น`)),
           h('div', { class: 'md-fight px-cut' },
-            h('button', { class: 'md-fight-btn px-cut', disabled: !fight, onclick: () => fight?.() }, icon('battle', 20), 'ต่อสู้'),
+            h('button', { class: 'md-fight-btn px-cut', disabled: !fight, onclick: () => fight?.(), title: 'หน้าต่อสู้เทิร์นเบส: เลือกท่าเอง' }, icon('battle', 20), 'ต่อสู้'),
+            h('button', { class: 'md-fight-btn field px-cut', disabled: !fieldFight, onclick: () => fieldFight?.(), title: 'สู้ตรงนี้บนแผนที่ แบบออโต้ (เปิดหน้าต่อสู้ทีหลังได้)' }, 'สู้ในแผนที่ (ออโต้)'),
             h('span', null, def.miniBoss ? 'มินิบอสมาพร้อมลูกน้อง 2 ตัว' : 'มากันเป็นกลุ่ม 3 ตัว')))),
     );
   },

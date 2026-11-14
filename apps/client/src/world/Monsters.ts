@@ -1,5 +1,7 @@
 import * as Phaser from 'phaser';
-import { ELEMENTS, MAP_SPAWNS, monsterById, type Habitat, type MonsterDef } from '@mythoria/game-data';
+import { AGGRO, ELEMENTS, MAP_SPAWNS, monsterById, type Habitat, type MonsterDef } from '@mythoria/game-data';
+import type { Surface } from '../fx/surface';
+import { drawPin } from './noticePin';
 import META from './monsters.json';
 import { insideFeet, T, TILE, vertexAt, waterAt, type Footprint, type MeadowMap } from './meadowMap';
 
@@ -11,8 +13,10 @@ import { insideFeet, T, TILE, vertexAt, waterAt, type Footprint, type MeadowMap 
 // Their pictures and in-place loops are PixelLab's (tools/monster_parts.py → the 'monsters' atlas, all facing
 // right); getting about is done here: slimes and rabbits hop (an arc, squashing as they land), mushrooms and
 // saplings walk (their walk loop), bees fly (bobbing in the air, a shadow on the ground under them).
-// They notice you when you come near (a "!" and they turn to you); walk up to one (or tap it) to see what
-// it is - battles start from there once they're in the game.
+// They notice you when you come near: a pin over a normal one's head with a ring filling round it (AGGRO in
+// game-data); full, a "!" and it comes after you - if it catches you, a fight starts on the map (the world's call).
+// It gives up after a while or too far from home and goes back the way it came. Mini-bosses only notice. Walk up to
+// one (or tap it) to see what it is and fight it yourself.
 
 type Gait = 'hop' | 'walk' | 'fly';
 interface Move {
@@ -73,6 +77,16 @@ export class Monster {
   held = false;
   /** Beaten: away until it comes back (MAP_SPAWNS respawn). */
   gone = false;
+  /** How much it has noticed you (0..1; full: it comes after you). */
+  meter = 0;
+  /** Coming after you. */
+  chasing = false;
+  private chaseT = 0;
+  /** The way it came while chasing, to go back home along. */
+  private back: { x: number; y: number }[] = [];
+  private stuckT = 0;
+  /** Someone is fighting it (one fighter per monster). */
+  engaged = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -123,16 +137,46 @@ export class Monster {
     return this.m.h + this.alt;
   }
 
-  update(dt: number, px: number, py: number, sort: (x: number, y: number, w: number, h: number) => number): void {
+  /**
+   * aggro: may it notice you and come after you now (not mid-fight, mid-warp, right after a fight...). Returns true
+   * when it has caught you.
+   */
+  update(dt: number, px: number, py: number, sort: (x: number, y: number, w: number, h: number) => number, aggro = false): boolean {
     this.anim += dt;
     const d = Math.hypot(px - this.x, (py - this.y) * 1.3);
-    if (d < NOTICE) {
-      if (!this.noticed) this.alert();
-      this.noticed = true;
-      if (this.state === 'idle' || this.held) this.facing = px < this.x ? -1 : 1;
-    } else if (d > NOTICE * 1.6) this.noticed = false;
+    let caught = false;
+    if (this.def.miniBoss || this.held || this.engaged) {
+      // a mini-boss only turns to you (a "!" as before); one being looked at or fought does nothing more
+      this.meter = 0;
+      if (d < NOTICE) {
+        if (!this.noticed && !this.engaged) this.alert();
+        this.noticed = true;
+        // (one being fought faces the leader striking it - FieldFight turns it - not you)
+        if (!this.engaged && (this.state === 'idle' || this.held)) this.facing = px < this.x ? -1 : 1;
+      } else if (d > NOTICE * 1.6) this.noticed = false;
+    } else if (this.chasing) {
+      caught = this.chase(dt, px, py, aggro);
+    } else {
+      // the meter: fills while you're near (faster the nearer), empties once you're away
+      if (aggro && d < AGGRO.radius) {
+        const k = Math.min(1, d / AGGRO.radius);
+        this.meter = Math.min(1, this.meter + dt / (AGGRO.fillNear + (AGGRO.fillFar - AGGRO.fillNear) * k));
+        if (this.state === 'idle') this.facing = px < this.x ? -1 : 1;
+        if (this.meter >= 1) {
+          this.alert();
+          this.chasing = true;
+          this.chaseT = 0;
+          this.stuckT = 0;
+          this.back = [{ x: this.x, y: this.y }];
+          this.state = 'idle';
+        }
+      } else this.meter = Math.max(0, this.meter - dt * AGGRO.drain);
+    }
 
-    if (this.held) this.state = 'idle';
+    if (this.held || this.engaged) this.state = 'idle';
+    else if (this.chasing) {
+      /* moved by chase() */
+    } else if (this.back.length) this.goBack(dt);
     else if (this.state === 'idle') {
       this.timer -= dt;
       if (this.timer <= 0) this.wander();
@@ -148,6 +192,71 @@ export class Monster {
       const k = 0.5 + 0.5 * Math.sin(this.anim * 2.2);
       this.aura.setPosition(this.x, this.y + 0.5).setAlpha(0.22 + 0.2 * k).setScale((this.m.w * 0.95) / 32 * (1 + 0.06 * k));
     }
+    return caught;
+  }
+
+  /** Its speed coming after you (px/s). */
+  private get chaseSpeed(): number {
+    return Math.max(AGGRO.chaseMin, this.move.speed * AGGRO.chaseMult);
+  }
+
+  /** After you: straight at you, sliding along what's in the way (stuck: it gives up). True when it caught you. */
+  private chase(dt: number, px: number, py: number, aggro: boolean): boolean {
+    this.chaseT += dt;
+    const dx = px - this.x, dy = py - this.y, d = Math.hypot(dx, dy);
+    if (aggro && d <= AGGRO.catch) return true;
+    const far = Math.hypot(this.x - this.home.x, this.y - this.home.y) > AGGRO.leash;
+    if (!aggro || this.chaseT > AGGRO.chaseSeconds || far || this.stuckT > 0.8) {
+      this.giveUp();
+      return false;
+    }
+    this.facing = dx < 0 ? -1 : 1;
+    const go = Math.min(d, this.chaseSpeed * dt);
+    const fly = this.move.gait === 'fly';
+    const nx = this.x + (dx / d) * go, ny = this.y + (dy / d) * go;
+    const ox = this.x, oy = this.y;
+    if (fly || this.free(nx, ny)) (this.x = nx), (this.y = ny);
+    else if (this.free(nx, this.y)) this.x = nx;
+    else if (this.free(this.x, ny)) this.y = ny;
+    this.stuckT = Math.hypot(this.x - ox, this.y - oy) < go * 0.3 ? this.stuckT + dt : 0;
+    const last = this.back[this.back.length - 1];
+    if (!last || Math.hypot(this.x - last.x, this.y - last.y) > 6) this.back.push({ x: this.x, y: this.y });
+    // a hopper bounds along, a walker walks, a bee flies
+    if (this.move.gait === 'hop') this.alt = Math.abs(Math.sin((this.chaseT * Math.PI) / (this.move.hop! * 0.8))) * this.move.lift!;
+    if (this.move.gait === 'walk') this.state = 'move';
+    return false;
+  }
+
+  /** Lost interest: back home the way it came. */
+  giveUp(): void {
+    this.chasing = false;
+    this.meter = 0;
+    this.state = 'idle';
+  }
+
+  /** Going home along its own way back (so it never cuts through a wall). */
+  private goBack(dt: number): void {
+    const p = this.back[this.back.length - 1];
+    const dx = p.x - this.x, dy = p.y - this.y, d = Math.hypot(dx, dy);
+    const go = this.move.speed * 1.4 * dt;
+    if (d <= go) {
+      this.x = p.x;
+      this.y = p.y;
+      this.back.pop();
+      if (!this.back.length) this.rest();
+      return;
+    }
+    this.facing = dx < 0 ? -1 : 1;
+    this.x += (dx / d) * go;
+    this.y += (dy / d) * go;
+    if (this.move.gait === 'hop') this.alt = Math.abs(Math.sin(this.anim * 6)) * this.move.lift! * 0.6;
+    if (this.move.gait === 'walk') this.state = 'move';
+  }
+
+  /** Its notice pin and ring, on the map's effect layer (pixels, like the battle's). */
+  drawMeter(s: Surface, t: number): void {
+    if (this.gone || this.engaged || this.held || !this.sprite.visible || (!this.chasing && this.meter <= 0.01)) return;
+    drawPin(s, Math.round(this.x), Math.round(this.y - this.top - 3), this.chasing ? 1 : this.meter, this.chasing, t);
   }
 
   setVisible(on: boolean): void {
@@ -319,9 +428,9 @@ export class Monsters {
       if (!def) continue;
       for (let n = 0; n < s.count; n++) {
         let p: { x: number; y: number } | null = null;
-        for (let i = 0; i < 40 && !p; i++) {
+        for (let i = 0; i < 80 && !p; i++) {
           const q = spot(s.habitat);
-          if (q && homes.every((h) => Math.hypot(h.x - q.x, h.y - q.y) > 80) && lairs.every((l) => Math.hypot(l.x - q.x, l.y - q.y) > 60)) p = q;
+          if (q && homes.every((h) => Math.hypot(h.x - q.x, h.y - q.y) > 56) && lairs.every((l) => Math.hypot(l.x - q.x, l.y - q.y) > 60)) p = q;
         }
         if (!p) continue;
         homes.push(p);
@@ -342,14 +451,42 @@ export class Monsters {
     });
   }
 
-  update(dt: number, px: number, py: number, sort: (x: number, y: number, w: number, h: number) => number): void {
+  /** Nobody notices you until then (seconds on this clock): after a fight, a flight. */
+  private graceUntil = 0;
+  private clock = 0;
+
+  /** Leave the player alone for a while (AGGRO.grace s): every chase stops, every meter empties. */
+  calm(seconds: number = AGGRO.grace): void {
+    this.graceUntil = this.clock + seconds;
+    for (const m of this.list) {
+      if (m.chasing) m.giveUp();
+      m.meter = 0;
+    }
+  }
+
+  /**
+   * aggro: may monsters notice you and come after you now; level: the master's (much weaker ones leave you alone).
+   * Returns the one that caught you, if one did.
+   */
+  update(dt: number, px: number, py: number, sort: (x: number, y: number, w: number, h: number) => number, aggro = false, level = 1): Monster | null {
+    this.clock += dt;
     const v = this.scene.cameras.main.worldView;
+    let caught: Monster | null = null;
+    const on = aggro && this.clock >= this.graceUntil;
     for (const m of this.list) {
       if (m.gone) continue;
-      const seen = m.x > v.x - 50 && m.x < v.right + 50 && m.y > v.y - 10 && m.y - 50 < v.bottom;
+      const seen = m.chasing || (m.x > v.x - 50 && m.x < v.right + 50 && m.y > v.y - 10 && m.y - 50 < v.bottom);
       m.setVisible(seen);
-      if (seen) m.update(dt, px, py, sort);
+      if (!seen) continue;
+      const may = on && !caught && level - m.def.level < AGGRO.ignoreBelow;
+      if (m.update(dt, px, py, sort, may) && !caught) caught = m;
     }
+    return caught;
+  }
+
+  /** Draw every notice pin (the map's effect layer calls this each frame). */
+  drawMeters(s: Surface): void {
+    for (const m of this.list) m.drawMeter(s, this.clock);
   }
 
   /** The one you're close enough to look at (the nearest), if any. */
@@ -373,7 +510,7 @@ export class Monsters {
     const v = cam.worldView;
     for (const m of this.list) {
       const close = m.def.miniBoss || Math.hypot(px - m.x, py - m.y) < 120;
-      const on = !hidden && !m.gone && close && m.sprite.visible && m.x > v.x - 20 && m.x < v.right + 20 && m.y > v.y && m.y - m.top < v.bottom;
+      const on = !hidden && !m.gone && !m.engaged && close && m.sprite.visible && m.x > v.x - 20 && m.x < v.right + 20 && m.y > v.y && m.y - m.top < v.bottom;
       m.tag.classList.toggle('show', on);
       if (on) m.tag.style.transform = `translate3d(${((m.x - v.x) * k).toFixed(1)}px, ${((m.y - m.top - 2 - v.y) * k).toFixed(1)}px, 0)`;
     }

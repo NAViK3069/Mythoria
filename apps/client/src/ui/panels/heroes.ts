@@ -5,66 +5,11 @@ import {
   ULT, copiesForNextStar, heroById,
   type ClassId, type ElementId, type RaceId, type RarityId,
 } from '@mythoria/game-data';
-import { RESERVE_SIZE, TEAM_SIZE, changed, player } from '../store';
+import { player } from '../store';
 import { art } from './common';
 
 // The heroes (@mythoria/game-data HEROES; the player starts with the seven Rare starters): the hero list,
 // narrowed by class, rarity, element and race, and each hero's own page.
-
-registerPanel('team', {
-  title: 'ทีม',
-  icon: 'team',
-  build(body, _tab, ctx) {
-    // 7 a side, like LineRanger_TurnBased: the team (5, on the field - the battle puts tanks and warriors in the
-    // front row, everyone else in the back) and the special team (2, off the field: a fighter calls one in to cast
-    // its skill 1, then it rests a few turns). Tap a hero below: into the team, or the special team once the team
-    // is full; tap a slot to take that hero out.
-    const team = player.team, reserves = player.reserves;
-    const face = (look: string) => h('img', { class: 'hero-pic tm-face', src: `assets/characters/heroes/${look}_face.png`, alt: '', draggable: false });
-    const toggle = (id: string) => {
-      const i = team.indexOf(id), j = reserves.indexOf(id);
-      if (i >= 0) {
-        if (team.length <= 1) return toast('ทีมต้องมีฮีโร่อย่างน้อย 1 ตัว');
-        team.splice(i, 1);
-      } else if (j >= 0) reserves.splice(j, 1);
-      else if (team.length < TEAM_SIZE) team.push(id);
-      else if (reserves.length < RESERVE_SIZE) reserves.push(id);
-      else return toast(`ทีมเต็มแล้ว (${TEAM_SIZE} + ทีมพิเศษ ${RESERVE_SIZE}) — แตะฮีโร่ในทีมเพื่อเอาออกก่อน`);
-      changed();
-      ctx.refresh();
-    };
-    const slot = (i: number) => {
-      const def = team[i] ? heroById(team[i]) : undefined;
-      if (!def)
-        return h('div', { class: 'card px-cut tm-slot empty' }, h('div', { class: 'tm-plus' }, '+'), h('div', { class: 'ds' }, `ช่อง ${i + 1}`));
-      const front = def.class === 'tank' || def.class === 'warrior';
-      return h('button', { class: `card px-cut tm-slot r-${def.rarity}`, onclick: () => toggle(def.id), title: 'แตะเพื่อเอาออกจากทีม' },
-        face(def.look), h('div', { class: 'nm' }, def.name),
-        h('div', { class: 'ds' }, classIcon(def.class, 16), front ? 'แถวหน้า' : 'แถวหลัง'));
-    };
-    const special = (i: number) => {
-      const def = reserves[i] ? heroById(reserves[i]) : undefined;
-      if (!def)
-        return h('div', { class: 'card px-cut tm-slot empty special' }, h('div', { class: 'tm-plus' }, '+'), h('div', { class: 'ds' }, `พิเศษ ${i + 1}`));
-      return h('button', { class: `card px-cut tm-slot special r-${def.rarity}`, onclick: () => toggle(def.id), title: 'แตะเพื่อเอาออกจากทีมพิเศษ' },
-        face(def.look), h('div', { class: 'nm' }, def.name), h('div', { class: 'ds' }, classIcon(def.class, 16), 'เรียกใช้สกิล 1'));
-    };
-    body.append(
-      h('h4', { class: 'tm-h' }, `ทีมหลัก (${team.length}/${TEAM_SIZE}) — ลงสนาม`),
-      h('div', { class: 'grid tm-slots' }, Array.from({ length: TEAM_SIZE }, (_, i) => slot(i))),
-      h('h4', { class: 'tm-h' }, `ทีมพิเศษ (${reserves.length}/${RESERVE_SIZE}) — ไม่ลงสนาม เพื่อนเรียกลงมาร่ายสกิล 1 แล้วพักหลายเทิร์น`),
-      h('div', { class: 'grid tm-slots tm-special' }, Array.from({ length: RESERVE_SIZE }, (_, i) => special(i))),
-      h('h4', { class: 'tm-h' }, 'ฮีโร่ของฉัน'),
-      h('div', { class: 'tm-pool' },
-        player.heroes.map((own) => {
-          const def = heroById(own.id);
-          if (!def) return null;
-          return h('button', { class: `chip px-cut tm-pick ${team.includes(def.id) ? 'on' : reserves.includes(def.id) ? 'on special' : ''}`, onclick: () => toggle(def.id) }, face(def.look), def.name, classIcon(def.class, 16));
-        })),
-      h('p', { class: 'note', style: 'margin-top:10px' }, 'ทีมหลัก 5 ตัว: แทงค์และนักรบยืนแถวหน้า (ถึกขึ้น) · ที่เหลือยืนแถวหลัง (ตีแรงขึ้น) · ทีมพิเศษ 2 ตัว: ไม่ลงสนาม ไม่โดนตี ไม่ตีปกติ ไม่รับบัฟ — ตัวในสนามเรียกลงมาร่ายสกิล 1 ได้ครั้งละตัว แล้วต้องรอคูลดาวน์ — ระบบต่อสู้จากเกม LineRanger_TurnBased'),
-    );
-  },
-});
 
 // What the hero list is narrowed to (kept while the game runs).
 const filter = {

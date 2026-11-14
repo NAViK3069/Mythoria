@@ -151,15 +151,15 @@ export interface Spawn {
 
 export const MAP_SPAWNS: Record<string, readonly Spawn[]> = {
   meadow: [
-    { monster: 'slime', count: 7, habitat: 'pond', respawn: 30 },
+    { monster: 'slime', count: 14, habitat: 'pond', respawn: 30 },
     { monster: 'slime_king', count: 1, habitat: 'pond', respawn: 300 },
-    { monster: 'hornbun', count: 6, habitat: 'grass', respawn: 30 },
+    { monster: 'hornbun', count: 12, habitat: 'grass', respawn: 30 },
     { monster: 'hornbun_chief', count: 1, habitat: 'grass', respawn: 300 },
-    { monster: 'shroom', count: 6, habitat: 'shade', respawn: 30 },
+    { monster: 'shroom', count: 12, habitat: 'shade', respawn: 30 },
     { monster: 'shroom_king', count: 1, habitat: 'shade', respawn: 300 },
-    { monster: 'sapling', count: 5, habitat: 'trees', respawn: 40 },
+    { monster: 'sapling', count: 10, habitat: 'trees', respawn: 40 },
     { monster: 'treant_elder', count: 1, habitat: 'trees', respawn: 300 },
-    { monster: 'bee', count: 6, habitat: 'flowers', respawn: 30 },
+    { monster: 'bee', count: 12, habitat: 'flowers', respawn: 30 },
     { monster: 'bee_queen', count: 1, habitat: 'flowers', respawn: 300 },
   ],
 };
@@ -175,3 +175,56 @@ export function encounterOf(monsterId: string): string[] {
   const minion = MONSTERS.find((x) => x.kind === m.kind && !x.miniBoss);
   return minion ? [m.id, minion.id, minion.id] : [m.id];
 }
+
+/**
+ * Monsters noticing you on the map and coming after you (world/Monsters.ts) - FIRST DRAFT numbers. A normal monster
+ * fills a notice meter while you're within `radius` (faster the closer you are), then chases you; if it catches you a
+ * fight starts on the map. Mini-bosses only notice (they keep to their lairs: you start those fights yourself).
+ */
+export const AGGRO = {
+  /** How near (px, feet to feet) before it starts to notice you. */
+  radius: 72,
+  /** Seconds to fill the meter: right next to it / at the edge of `radius`. */
+  fillNear: 1.0,
+  fillFar: 3.2,
+  /** How fast the meter empties once you're out of range (per second). */
+  drain: 0.6,
+  /** Chasing: its speed is its own x this, never under `chaseMin` (px/s) - the master walks 92, so you can get away. */
+  chaseMult: 1.8,
+  chaseMin: 44,
+  /** It gives up after this long, or this far from its home (px). */
+  chaseSeconds: 7,
+  leash: 260,
+  /** Caught: this close (px). */
+  catch: 14,
+  /** After a fight ends, a flight, or it gives up: nobody notices you for this long (s). */
+  grace: 4,
+  /** Monsters this many levels below the master leave you alone. */
+  ignoreBelow: 10,
+} as const;
+
+/**
+ * A fight on the map (world/FieldFight.ts): the same battle as the turn-based screen, played on auto, shown on the
+ * map - the team leader strikes for the whole team. FIRST DRAFT numbers.
+ */
+export const FIELD_FIGHT = {
+  /** Seconds between moves (a skill / an ultimate gets a little longer to read). */
+  step: 1.0,
+  skillExtra: 0.6,
+  ultExtra: 1.3,
+  /** Walking further than this (px) from the fight is running away from it. */
+  leash: 120,
+  /** How far apart the leader and the monster stand (px). */
+  gap: 26,
+} as const;
+
+/** Auto-farming (the Ragnarok-style button, ADR 0019) - FIRST DRAFT. */
+export const FARM = {
+  /** A monster can be farmed only once you've beaten it yourself - OFF (the owner's call: farm anything; if the team
+   * can't win, it just falls). */
+  needWin: false,
+  /** How close (px) the master walks before the fight starts - not up to it: from here (with nothing in the way) the team leader walks in and fights (the owner's call). */
+  reach: 70,
+  /** Looking for the next one: at most this far (px) away. */
+  range: 900,
+} as const;

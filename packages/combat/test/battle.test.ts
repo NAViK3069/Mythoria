@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STARTER_HEROES, ULT } from '@mythoria/game-data';
-import { Battle, ENERGY_START, RESERVE_COOLDOWN, elementMultiplier, heroTeam, monsterTeam, reserveTeam, type CombatStats, type UnitSetup } from '../src';
+import { Battle, ENERGY_START, RESERVE_COOLDOWN, elementMultiplier, heroLineup, heroTeam, monsterTeam, reserveTeam, type CombatStats, type UnitSetup } from '../src';
 
 const plain = (spd = 100, extra: Partial<CombatStats> = {}): CombatStats => ({
   hp: 5000, atk: 300, def: 200, spd, crit: 0, critDmg: 150, evade: 0, hit: 0, skillEvade: 0, skillHit: 0,
@@ -158,5 +158,29 @@ describe('battle (ported from LineRanger_TurnBased)', () => {
     expect(b.energy[0]).toBe(energy); // costs no team energy
     expect(kael.ult).toBeGreaterThanOrEqual(ULT.afterUlt);
     expect(kael.ult).toBeLessThan(ULT.max);
+  });
+});
+
+describe('heroLineup', () => {
+  it('keeps the rows the player picked, in order', () => {
+    const t = heroLineup(['sira', 'bram'], ['kael', 'nyx']);
+    expect(t.map((u) => [u.id, u.row, u.lane])).toEqual([['sira', 'front', 0], ['bram', 'front', 1], ['kael', 'back', 0], ['nyx', 'back', 1]]);
+  });
+  it('moves the first of the back row up when the front is empty', () => {
+    const t = heroLineup([], ['kael', 'nyx'], 1, (id) => (id === 'nyx' ? 0.5 : undefined));
+    expect(t.map((u) => [u.id, u.row])).toEqual([['kael', 'front'], ['nyx', 'back']]);
+    expect(t[1].hpShare).toBe(0.5);
+  });
+});
+
+describe('overtime', () => {
+  it('plays normally to turn 80, then every hit grows x1.2 a turn, compounding', () => {
+    const b = new Battle([heroTeam(['bram']), monsterTeam(['slime'])], 3);
+    b.turn = 80;
+    expect(b.overtimeMult).toBe(1);
+    b.turn = 81;
+    expect(b.overtimeMult).toBeCloseTo(1.2);
+    b.turn = 83;
+    expect(b.overtimeMult).toBeCloseTo(1.728);
   });
 });

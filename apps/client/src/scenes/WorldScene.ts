@@ -10,8 +10,12 @@ import { Monsters, type Monster } from '../world/Monsters';
 import { monsterPrompt, setFight, showMonster } from '../ui/panels/monster';
 import type { BattleData } from './BattleScene';
 import { playTransition } from '../ui/transition';
-import { MAP_SPAWNS, encounterOf } from '@mythoria/game-data';
+import { FARM, FIELD_FIGHT, MAP_SPAWNS, encounterOf } from '@mythoria/game-data';
+import { autoFight, farm, farmWants, setupFarm, stopFarm } from '../ui/farm';
+import type { Battle } from '@mythoria/combat';
 import { closePanel } from '../ui/Modal';
+import { swordCursor } from '../ui/cursor';
+import { drawOutline } from '../world/outline';
 import { closeTalk, openTalk, talkOpen, talkPrompt } from '../ui/talk';
 import { Warps } from '../world/Warps';
 import { uiBlocking } from '../ui/Modal';
@@ -24,9 +28,15 @@ import { MeadowView } from '../world/MeadowView';
 import { renderMinimap } from '../world/minimap';
 import { BEYOND, TILE, waterAt, type Door, type Footprint, type MeadowMap, type ShapeOf } from '../world/meadowMap';
 import { NAV_CELL, NavGrid, pushOut, type Point } from '../world/pathfind';
-import { clearPlace, flushSave, player, savePlace, type SavedPlace } from '../ui/store';
+import { clearPlace, flushSave, onChange, player, savePlace, type SavedPlace } from '../ui/store';
+import { Follower } from '../world/Follower';
 import { toast } from '../ui/dom';
 import { fitTeam, wakeFallen } from '../ui/vitals';
+import { BattleLayer } from '../fx/BattleLayer';
+import { FieldFight, type FieldEnd } from '../world/FieldFight';
+import { Opener } from '../world/Opener';
+import { hideFightBar, showFightBar } from '../ui/fieldFight';
+import { changed } from '../ui/store';
 
 /** The textures that exist when the world first starts (art loaded at boot); everything else is per map. */
 let bootTextures: Set<string> | null = null;
@@ -66,6 +76,22 @@ export class WorldScene extends Phaser.Scene {
   private inspected: Monster | null = null;
   /** Off fighting (the map sleeps meanwhile). */
   private battling = false;
+  /** A fight on the map (world/FieldFight.ts), and the pixel layer its numbers / the notice pins draw on. */
+  private fight: FieldFight | null = null;
+  /** The opening blow on the map before the turn-based screen (world/Opener.ts). */
+  private opener: Opener | null = null;
+  private fx!: BattleLayer;
+  /** Auto-farm's current quarry (ui/farm.ts), and when it last looked for one (scene s). */
+  private farmMon: Monster | null = null;
+  /** The monster under the mouse (sword cursor, white-red outline), and the one you clicked to fight. */
+  private hoverMon: Monster | null = null;
+  private goFight: Monster | null = null;
+  /** Is the mouse over the map itself (not over a menu on top of it)? */
+  private overMap = false;
+  private farmLook = -1;
+  /** The team leader, walking behind the master (world/Follower.ts). */
+  private follower!: Follower;
+  private warpWas = false;
   private warps!: Warps;
   /** The warp pad the hero stands on. */
   private padHere: string | null = null;
@@ -181,8 +207,20 @@ export class WorldScene extends Phaser.Scene {
       savePlace(this.mapId, start.x, start.y, this.master.facing);
       this.saved = { x: start.x, y: start.y, facing: this.master.facing, t: 0 };
     }
+    // the team leader walks behind you (it changes when the team or its leader does)
+    this.follower = new Follower(this, (x, y) => this.view.depthFor(x, y, 16, 30));
+    const leader = () => player.teams[player.activeTeam]?.leader ?? null;
+    this.follower.set(leader(), start.x, start.y, this.master.facing);
+    // (came by warp: it lands with you, after the veil)
+    if (arriving) this.follower.setHidden(true);
+    this.warpWas = !!arriving;
+    const offLeader = onChange(() => this.follower.set(leader(), this.master.x, this.master.y, this.master.facing));
+    this.events.once('shutdown', () => (offLeader(), this.follower.destroy()));
     this.animals = new Animals(this, this.map, (x, y) => this.ground(x, y), (x, y, w, h) => this.view.depthFor(x, y, w, h), this.npcs.feet);
     this.monsters = new Monsters(this, this.map, (x, y) => this.ground(x, y), this.feet, (mo) => this.approachMonster(mo));
+    // auto-farm (none in the town): the button, its list drawn with each monster's own picture
+    this.farmMon = null;
+    setupFarm(this.mapId, (look) => this.monsterPic(look));
     this.monHere = this.lookAt = this.inspected = null;
     this.battling = false;
     setFight(null);
@@ -204,6 +242,27 @@ export class WorldScene extends Phaser.Scene {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', onPageHide);
     });
+    // the map's own pixel-effect layer: the monsters' notice pins, a fight's numbers and bars (made once the camera is
+    // set up, below)
+    this.fight = null;
+    this.opener = null;
+    const canvas = this.game.canvas;
+    const onMove = (e: PointerEvent) => (this.overMap = e.pointerType === 'mouse' && e.target === canvas);
+    const onOut = () => (this.overMap = false);
+    window.addEventListener('pointermove', onMove);
+    document.addEventListener('mouseleave', onOut);
+    this.hoverMon = this.goFight = null;
+    this.events.once('shutdown', () => {
+      window.removeEventListener('pointermove', onMove);
+      document.removeEventListener('mouseleave', onOut);
+      swordCursor(false);
+    });
+    this.events.once('shutdown', () => {
+      this.fight?.stop();
+      this.fight = null;
+      hideFightBar();
+      this.fx?.destroy();
+    });
     this.events.once('shutdown', () => {
       closeTalk();
       talkPrompt(null);
@@ -213,7 +272,14 @@ export class WorldScene extends Phaser.Scene {
     this.markers = new MoveMarkers(this);
     this.controls = new Controls(this);
     // the marker lands where you'll really end up (by a house's wall, at a pond's bank)
-    this.controls.onTarget = (x, y) => this.markTo(x, y);
+    // a click on a monster attacks it, on someone talks to them - not a walk there
+    this.controls.taken = (x, y) => !!(this.npcs.at(x, y) || this.monsters.at(x, y));
+    this.controls.onTarget = (x, y) => {
+      // walking yourself stops auto-farm, and calls off an attack (like LoL: to attack again, click the monster again)
+      stopFarm('หยุดฟาร์มออโต้แล้ว (เดินเอง)');
+      this.cancelAttack();
+      this.markTo(x, y);
+    };
 
     const cam = this.cameras.main;
     cam.setRoundPixels(false);
@@ -221,6 +287,7 @@ export class WorldScene extends Phaser.Scene {
     // nothing glides into place when the page loads
     cam.startFollow(this.master.root, false, 0.12, 0.12, 0, 16);
     this.fitZoom();
+    this.fx = new BattleLayer(this, 9600, 'mapfx');
     const onResize = () => this.fitZoom();
     this.scale.on('resize', onResize);
     // once the menus have slid in (they're measured mid-slide at first), measure them again
@@ -323,12 +390,18 @@ export class WorldScene extends Phaser.Scene {
    * 540 world px across the short side of a computer/iPad screen, 360 on a phone.
    */
   private fitZoom(): void {
+    this.fitFx();
     const dpr = this.scale.displayScale.x;
     const cssShort = Math.min(window.innerWidth, window.innerHeight);
     const target = cssShort < 500 ? 360 : 540;
     const zoom = Phaser.Math.Clamp(Math.round((dpr * cssShort) / target), 1, 8);
     this.cameras.main.setZoom(zoom);
     this.fitBounds();
+  }
+
+  /** The effect layer follows the camera's size and zoom. */
+  private fitFx(): void {
+    this.time.delayedCall(0, () => this.fx?.fit());
   }
 
   /**
@@ -351,8 +424,9 @@ export class WorldScene extends Phaser.Scene {
     this.controls.update();
     const m = this.master;
     let { x: dx, y: dy } = this.controls.dir;
+    if ((dx || dy) && this.goFight) this.cancelAttack();
 
-    // mid-warp the hero doesn't walk
+    // mid-warp the hero doesn't walk (mid-fight on the map it may: walking too far off is running away)
     if (this.warps.busy) {
       dx = dy = 0;
       this.controls.target = null;
@@ -410,8 +484,21 @@ export class WorldScene extends Phaser.Scene {
       this.replans = 0;
     }
     m.update(dt);
+    // the leader: hidden while a warp carries you, starting again behind you where you land
+    if (this.warps.busy !== this.warpWas) {
+      this.warpWas = this.warps.busy;
+      this.follower.setHidden(this.warps.busy);
+      if (!this.warps.busy) this.follower.reset(m.x, m.y, m.facing);
+    }
+    this.follower.update(dt, m.x, m.y);
 
     this.view.moving = Math.hypot(m.vx, m.vy) > 5;
+    // the leader walking with you, and the monster you're fighting, show through what's in front of them too
+    const lead = this.follower.body;
+    this.view.also = [
+      ...(lead ? [{ x: lead.x, y: lead.y }] : []),
+      ...(this.fight && !this.fight.monster.gone ? [{ x: this.fight.monster.x, y: this.fight.monster.y }] : []),
+    ];
     this.view.update(dt, m.x, m.y, time / 1000);
     const shrine = this.map.braziers[0];
     if (shrine && Math.hypot(m.x - shrine.x - 24, m.y - shrine.y) < 70) this.hud.reached('shrine');
@@ -441,9 +528,35 @@ export class WorldScene extends Phaser.Scene {
     }
     if (npc && npc === this.talkTo && !uiBlocking()) this.talk(npc);
     // a monster: see what it is (the fight will start from here)
-    this.monsters.update(dt, m.x, m.y, (x, y, w, h) => this.view.depthFor(x, y, w, h));
+    // they notice you and come after you (not mid-fight, mid-warp, with a panel up, or when nobody can fight)
+    const aggro = !this.fight && !this.opener && !this.battling && !this.warps.busy && !uiBlocking() && fitTeam(player.team).length > 0;
+    if (farm.on && (dx || dy) && !this.controls.target) stopFarm('หยุดฟาร์มออโต้แล้ว (เดินเอง)');
+    this.farmStep(now);
+    const caught = this.monsters.update(dt, m.x, m.y, (x, y, w, h) => this.view.depthFor(x, y, w, h), aggro, player.level);
+    if (caught) this.engage(caught, 'them');
+    this.fight?.update(dt);
+    this.opener?.update(dt);
+    if (this.fight && !this.fight.ended && this.fight.distance() > FIELD_FIGHT.leash) this.fleeFieldFight();
+    // the effect layer only draws while there's something on it (a pin, a fight)
+    // the monster under the mouse: the sword cursor and a white-red outline (one you could fight: not one being fought)
+    let hover: Monster | null = null;
+    if (this.overMap && !uiBlocking() && !this.battling) {
+      const p = this.input.activePointer;
+      const wp = this.cameras.main.getWorldPoint(p.x, p.y);
+      hover = this.monsters.at(wp.x, wp.y);
+      if (hover && (hover.engaged || hover.gone)) hover = null;
+    }
+    if (hover !== this.hoverMon) swordCursor(!!hover);
+    this.hoverMon = hover;
+    this.goFightStep();
+    this.fx.over = this.fight || this.opener || hover || this.monsters.list.some((mo) => mo.chasing || mo.meter > 0.01) ? (s) => {
+      if (this.hoverMon) drawOutline(s, this.hoverMon.sprite, now);
+      this.monsters.drawMeters(s);
+      this.fight?.drawBars(s);
+    } : null;
+    this.fx.update(dt);
     if (this.inspected && !uiBlocking()) (this.inspected.held = false), (this.inspected = null);
-    const mon = this.warps.busy || pad || npc ? null : this.monsters.near(m.x, m.y);
+    const mon = this.warps.busy || pad || npc || this.fight ? null : this.monsters.near(m.x, m.y);
     if (mon !== this.monHere) {
       this.monHere = mon;
       monsterPrompt(mon && mon.def, mon ? () => this.inspect(mon) : undefined);
@@ -526,6 +639,7 @@ export class WorldScene extends Phaser.Scene {
 
   /** Go and talk to someone: right away if they're close, or walk over to them first. */
   private approach(n: Npc): void {
+    stopFarm();
     if (this.warps.busy || uiBlocking()) return;
     const m = this.master;
     if (Math.hypot(n.x - m.x, (n.y - m.y) * 1.4) < 26) return this.talk(n);
@@ -537,13 +651,141 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** Go and look at a monster: right away if it's close, or walk over to it first (it may wander off). */
-  private approachMonster(mo: Monster): void {
-    if (this.warps.busy || uiBlocking()) return;
+  /**
+   * Auto-farm (ui/farm.ts): walk to the nearest monster of the picked kinds and fight it on the map; then the next.
+   * Stops by itself when only the leader is left standing (the leader never falls, the rest would keep falling).
+   */
+  private farmStep(now: number): void {
+    if (!farm.on || this.fight || this.opener || this.battling || this.warps.busy || uiBlocking()) return;
     const m = this.master;
-    if (Math.hypot(mo.x - m.x, (mo.y - m.y) * 1.4) < mo.range) return this.inspect(mo);
+    let mo = this.farmMon;
+    if (!mo || mo.gone || mo.engaged || !farmWants(mo.def.id)) {
+      // look for the next (not every frame)
+      if (now - this.farmLook < 0.5) return;
+      this.farmLook = now;
+      mo = this.farmMon = this.nearestFarm();
+      if (!mo) return;
+    }
+    // near enough, in plain sight: stop there - the leader walks in and fights (the master needn't go up to it)
+    if (this.inReach(mo)) {
+      this.controls.target = null;
+      this.farmMon = null;
+      this.engage(mo);
+      return;
+    }
+    // (stand on its near side; the way there is found and re-found as it moves)
+    this.controls.target = { x: mo.x + (m.x < mo.x ? -14 : 14), y: mo.y + 3 };
+  }
+
+  /** The nearest monster auto-farm wants that can be walked to. */
+  private nearestFarm(): Monster | null {
+    const m = this.master;
+    const near = this.monsters.list
+      .filter((mo) => !mo.gone && !mo.engaged && farmWants(mo.def.id) && Math.hypot(mo.x - m.x, mo.y - m.y) < FARM.range)
+      .sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y))
+      .slice(0, 4);
+    for (const mo of near) {
+      const way = this.nav.find(m.x, m.y, mo.x, mo.y);
+      const end = way[way.length - 1];
+      if (end && Math.hypot(end.x - mo.x, end.y - mo.y) < 26) return mo;
+    }
+    return null;
+  }
+
+  /** A monster kind's picture (its first idle frame), for auto-farm's list. */
+  private monsterPic(look: string): HTMLCanvasElement {
+    const c = document.createElement('canvas');
+    if (!this.textures.get('monsters').has(`${look}_idle0`)) return c;
+    const f = this.textures.getFrame('monsters', `${look}_idle0`);
+    c.width = f.cutWidth;
+    c.height = f.cutHeight;
+    const g = c.getContext('2d')!;
+    g.imageSmoothingEnabled = false;
+    g.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, f.cutWidth, f.cutHeight, 0, 0, f.cutWidth, f.cutHeight);
+    return c;
+  }
+
+  /**
+   * Clicking a monster (the sword): go and fight it - walk until it's within FARM.reach in plain sight, then the team
+   * leader walks in and the fight starts on the map (the master needn't go up to it). Its card stays on the "look"
+   * prompt you get standing by it.
+   */
+  private approachMonster(mo: Monster): void {
+    stopFarm();
+    if (this.warps.busy || uiBlocking() || this.fight || this.opener || mo.engaged || mo.gone) return;
+    this.lookAt = null;
+    // within reach: stand where you are, the leader goes (like a ranged champion attacking from range)
+    if (this.inReach(mo)) {
+      this.goFight = null;
+      this.controls.target = null;
+      this.route = [];
+      return this.engage(mo);
+    }
+    // too far: walk only until it is within reach (no move marker - it's an attack, not a walk)
+    this.goFight = mo;
+    const m = this.master;
     this.controls.target = { x: mo.x + (m.x < mo.x ? -14 : 14), y: mo.y + 4 };
-    this.markTo(this.controls.target.x, this.controls.target.y);
-    this.lookAt = mo;
+    this.plan(this.controls.target.x, this.controls.target.y);
+  }
+
+  /**
+   * A walk command calls off an attack not yet begun (still walking up to the monster). A fight already going keeps
+   * going while you walk about - only walking out of range (FIELD_FIGHT.leash) ends it.
+   */
+  private cancelAttack(): void {
+    this.goFight = null;
+  }
+
+  /** Is a monster within FARM.reach, with nothing in the way (a line to just short of it - it may stand by a trunk)? */
+  private inReach(mo: Monster): boolean {
+    const m = this.master;
+    const d = Math.hypot(mo.x - m.x, (mo.y - m.y) * 1.3);
+    if (d >= FARM.reach) return false;
+    const k = Math.max(0, (d - 20) / Math.max(1, d));
+    return this.nav.clear(m.x, m.y, m.x + (mo.x - m.x) * k, m.y + (mo.y - m.y) * k);
+  }
+
+  /** A fight begins (you caught up with it, it caught you, farming): on the map on auto, or - the AUTO switch off -
+   * on the turn-based screen. */
+  private engage(mo: Monster, first: 'us' | 'them' = 'us'): void {
+    if (this.fight || this.opener || this.battling) return;
+    if (autoFight()) return this.startFieldFight(mo);
+    this.toBattle(mo, first);
+  }
+
+  /** The turn-based screen opens only after a first blow on the map: the leader's (or the monster's, if it caught you). */
+  private toBattle(mo: Monster, first: 'us' | 'them' = 'us'): void {
+    if (this.fight || this.opener || this.battling || mo.gone) return;
+    const leader = this.follower.body;
+    if (!leader || !fitTeam(player.team).length) return this.startBattle(mo);
+    this.follower.held = true;
+    this.controls.target = null;
+    this.opener = new Opener(this, this.fx, leader, mo, this.master, first, () => {
+      this.opener = null;
+      this.follower.held = false;
+      this.startBattle(mo);
+    });
+  }
+
+  /** On the way to a monster you clicked: near enough and in plain sight, the fight starts. */
+  private goFightStep(): void {
+    const mo = this.goFight;
+    if (!mo) return;
+    if (this.fight || this.opener || this.battling || mo.gone || mo.engaged || this.warps.busy) {
+      this.goFight = null;
+      return;
+    }
+    const m = this.master;
+    if (this.inReach(mo)) {
+      this.goFight = null;
+      this.controls.target = null;
+      this.route = [];
+      this.engage(mo);
+      return;
+    }
+    // walked off yourself (the target was dropped): forget it
+    if (!this.controls.target) this.goFight = null;
+    else this.controls.target = { x: mo.x + (m.x < mo.x ? -14 : 14), y: mo.y + 4 };
   }
 
   /** Face a monster and open its card. */
@@ -556,8 +798,101 @@ export class WorldScene extends Phaser.Scene {
     mo.facing = this.master.x < mo.x ? -1 : 1;
     monsterPrompt(null);
     this.monHere = null;
-    setFight(() => this.startBattle(mo));
+    setFight(() => {
+      closePanel();
+      mo.held = false;
+      this.inspected = null;
+      this.toBattle(mo);
+    }, () => {
+      closePanel();
+      mo.held = false;
+      this.inspected = null;
+      this.startFieldFight(mo);
+    });
     showMonster(mo.def, this.monsters.picture(mo));
+  }
+
+  /**
+   * Fight a monster here on the map (ADR 0019): the same battle on auto, the team leader striking for the team
+   * (world/FieldFight.ts). One fighter per monster: one already being fought can't be picked.
+   */
+  private startFieldFight(mo: Monster, battle?: Battle): void {
+    if (this.fight || this.battling || mo.engaged || mo.gone) return;
+    wakeFallen();
+    const leader = this.follower.body;
+    if (!fitTeam(player.team).length || !leader) {
+      toast('ฮีโร่ในทีมล้มหมด — ใช้ยาชุบชีวิต หรือรอให้ฟื้นก่อน');
+      this.monsters.calm();
+      return;
+    }
+    closePanel();
+    monsterPrompt(null);
+    talkPrompt(null);
+    this.controls.target = null;
+    this.route = [];
+    this.lookAt = this.inspected = this.monHere = null;
+    this.keepPlace(true);
+    this.follower.held = true;
+    const fight = new FieldFight(this, {
+      layer: this.fx,
+      monster: mo,
+      master: this.master,
+      leader,
+      foes: encounterOf(mo.def.id),
+      seed: Math.floor(Math.random() * 1e9),
+      battle,
+      onEnd: (kind) => this.endFieldFight(mo, kind),
+    });
+    this.fight = fight;
+    this.monsters.calm(9999);
+    showFightBar(mo.def, { open: () => this.fieldToTurnBased() });
+    fight.syncBars();
+  }
+
+  /** The fight on the map is over (FieldFight has written the heroes' HP back). */
+  private endFieldFight(mo: Monster, kind: FieldEnd): void {
+    hideFightBar();
+    this.fight = null;
+    this.follower.held = false;
+    this.monsters.calm();
+    if (kind === 'win') {
+      const spawn = MAP_SPAWNS[this.map.id]?.find((sp) => sp.monster === mo.def.id);
+      // (it's dissolving on the effect layer; its picture goes now)
+      this.monsters.defeat(mo, spawn?.respawn ?? 60);
+      this.beat(mo);
+    }
+  }
+
+  /** Run: the fight stops where it is (the heroes keep what they have left; the monster loses interest). */
+  private fleeFieldFight(why = 'หนีออกจากการต่อสู้แล้ว'): void {
+    const f = this.fight;
+    if (!f) return;
+    stopFarm();
+    f.stop();
+    hideFightBar();
+    this.fight = null;
+    this.follower.held = false;
+    this.monsters.calm();
+    toast(why);
+  }
+
+  /** Carry the fight on on the turn-based screen (you choose the moves), from where it has got to. */
+  private fieldToTurnBased(): void {
+    const f = this.fight;
+    if (!f) return;
+    if (f.battle.over) return;
+    const battle = f.handOver();
+    hideFightBar();
+    this.fight = null;
+    this.follower.held = false;
+    this.startBattle(f.monster, battle);
+  }
+
+  /** A monster kind beaten (once is enough to unlock farming it on auto later). */
+  private beat(mo: Monster): void {
+    const b = (player.beaten ??= {});
+    b[mo.def.id] = (b[mo.def.id] ?? 0) + 1;
+    changed();
   }
 
   /**
@@ -565,7 +900,7 @@ export class WorldScene extends Phaser.Scene {
    * under its cover the map sleeps and the battle opens on the stage's arena (BattleScene); when it's over the
    * same wipe takes you back and the map wakes where you were.
    */
-  private startBattle(mo: Monster): void {
+  private startBattle(mo: Monster, live?: Battle): void {
     if (this.battling) return;
     // nobody in the team who can fight (all down): heal or revive them first
     wakeFallen();
@@ -589,13 +924,27 @@ export class WorldScene extends Phaser.Scene {
     const data: BattleData = {
       foes: encounterOf(mo.def.id),
       seed: Math.floor(Math.random() * 1e9),
+      // a fight from the map: carried on exactly where it is, and it can be folded back there
+      battle: live,
+      // (any battle can be folded back to the map: it carries on there on auto)
+      fold: (battle) => {
+        this.scene.wake();
+        this.battling = false;
+        mo.held = false;
+        cam.zoomEffect.reset();
+        this.fitZoom();
+        this.startFieldFight(mo, battle);
+      },
       done: (result) => {
         this.scene.wake();
         this.battling = false;
         mo.held = false;
+        mo.engaged = false;
+        this.monsters.calm();
         if (result === 'win') {
           const spawn = MAP_SPAWNS[this.map.id]?.find((sp) => sp.monster === mo.def.id);
           this.monsters.defeat(mo, spawn?.respawn ?? 60);
+          this.beat(mo);
         }
         // stop the push-in (it was cut off when the map went to sleep and would carry on, leaving the camera
         // closer after every battle) and go back to the map's own zoom for this screen

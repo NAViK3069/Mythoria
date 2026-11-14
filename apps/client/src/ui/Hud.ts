@@ -6,6 +6,7 @@ import './ui.css';
 import './panels/account';
 import './panels/items';
 import './panels/heroes';
+import './panels/team';
 import './panels/social';
 import { loginGiftReady } from './panels/play';
 import { fmt, glyph, GLYPH_PLUS, h, icon, toast } from './dom';

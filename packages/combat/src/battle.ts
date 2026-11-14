@@ -158,9 +158,15 @@ export const CAPS = { crit: 100, evade: 60, skillEvade: 60, statusRes: 70, dmgRe
 export const DAMAGE_SCALE = 1.7;
 /** At most this share of the target's max HP in one hit (overtime raises it). */
 export const MAX_HIT_RATIO = 0.5;
-export const OVERTIME_TURN = 48;
-export const OVERTIME_STEP = 0.06;
+/**
+ * Overtime (the owner's rule): turns 1..TURN_LIMIT play normally; after that every hit is multiplied by
+ * OVERTIME_GROWTH per turn past it, compounding (x1.2, x1.44, x1.73, x2.07...), so a battle never drags on for
+ * hundreds of turns. HARD_TURN_LIMIT is only a safety stop (time up: the side with more HP left wins).
+ */
 export const TURN_LIMIT = 80;
+export const OVERTIME_TURN = TURN_LIMIT;
+export const OVERTIME_GROWTH = 1.2;
+export const HARD_TURN_LIMIT = 200;
 export const TIME_UP_DRAW_PCT = 0.1;
 const AV_BASE = 10000;
 const DEF_K = 800;
@@ -577,10 +583,10 @@ export class Battle {
     u.statuses = u.statuses.filter((s) => s.turns > 0 && !(s.type === 'shield' && (s.shieldHp ?? 0) <= 0));
     if (wasStunned && !this.has(u, 'stun')) u.stunGuard = 2;
     this.syncSpeed();
-    if (this.turn >= TURN_LIMIT && this.winner === null) this.timeUp();
+    if (this.turn >= HARD_TURN_LIMIT && this.winner === null) this.timeUp();
   }
   get overtimeMult(): number {
-    return 1 + Math.max(0, this.turn - OVERTIME_TURN) * OVERTIME_STEP;
+    return Math.pow(OVERTIME_GROWTH, Math.max(0, this.turn - OVERTIME_TURN));
   }
 
   // ---------------------------------------------------------------- moves and targets

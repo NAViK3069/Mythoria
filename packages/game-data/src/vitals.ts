@@ -6,6 +6,8 @@ export const VITALS = {
   /** A fallen hero gets up by itself after this long (minutes), with this much of its max HP (%). */
   reviveMinutes: 30,
   reviveHpPct: 30,
+  /** The team leader never stays down: when it falls it's back up at once with this much of its max HP (%). */
+  leaderRevivePct: 15,
   /** What the items do outside battle. */
   items: {
     /** ยาฟื้นฟู: heals one hero by this % of its max HP (not a fallen one). */
